@@ -1435,7 +1435,7 @@ def _open_browser_soon(port: int) -> None:
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("CV_PORT", "5000"))
+    port = int(os.environ.get("PORT", os.environ.get("CV_PORT", "5000")))
     _print_banner(port)
     if "--no-browser" not in sys.argv:
         _open_browser_soon(port)
