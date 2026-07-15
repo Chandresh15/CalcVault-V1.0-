@@ -1,0 +1,270 @@
+{# ============================================================
+   templates/owner_dashboard.html — CalcVault (Ramboll Edition)
+   4 KPIs · 4 Chart.js charts · Recent activity · Excel export
+   ============================================================ #}
+{% extends "base.html" %}
+{% block title %}Owner Dashboard{% endblock %}
+{% block page_title %}Owner Dashboard{% endblock %}
+
+{% block head_extra %}
+  <script defer
+    src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+
+{# ---------- Header row ---------- #}
+<section class="between wrap mb-2" style="gap:.75rem;">
+  <div>
+    <h1 style="margin:.15rem 0 .1rem;">Owner Overview</h1>
+    <p class="text-muted small" style="margin:0;">
+      Live activity across every user and every module.
+      Data refreshes on each page load.
+    </p>
+  </div>
+  <div class="hstack wrap" style="gap:.5rem;">
+    <a class="btn btn-soft" href="{{ url_for('approvals') }}">✅ Approvals</a>
+    <a class="btn btn-soft" href="{{ url_for('manage_users') }}">👥 Users</a>
+    <a class="btn btn-soft" href="{{ url_for('hub') }}">🧩 Module Hub</a>
+    <a class="btn"          href="{{ url_for('export_log') }}">📊 Export Log (xlsx)</a>
+  </div>
+</section>
+
+{# ---------- KPI row ---------- #}
+<section class="grid grid-4 mb-2">
+  <div class="kpi">
+    <span class="kpi-label">Total Calculations</span>
+    <span class="kpi-value">{{ kpi.total }}</span>
+    <span class="kpi-sub">All users, all modules</span>
+  </div>
+  <div class="kpi" style="border-left-color: var(--brand-cyan);">
+    <span class="kpi-label">Active Users</span>
+    <span class="kpi-value">{{ kpi.users }}</span>
+    <span class="kpi-sub">Accounts in the system</span>
+  </div>
+  <div class="kpi" style="border-left-color: var(--warn);">
+    <span class="kpi-label">Pending Reviews</span>
+    <span class="kpi-value">{{ kpi.pending }}</span>
+    <span class="kpi-sub">Awaiting your sign-off</span>
+  </div>
+  <div class="kpi" style="border-left-color: var(--ok);">
+    <span class="kpi-label">Approved</span>
+    <span class="kpi-value">{{ kpi.approved }}</span>
+    <span class="kpi-sub">Signed-off calculations</span>
+  </div>
+</section>
+
+{# ---------- Charts (2 × 2) ---------- #}
+<section class="grid grid-2 mt-1">
+  <div class="card">
+    <div class="card-title"><span class="ic">📈</span> Last 7 days</div>
+    <div style="height: 260px;"><canvas id="chTrend"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title"><span class="ic">🥯</span> By module</div>
+    <div style="height: 260px;"><canvas id="chModules"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title"><span class="ic">👤</span> By user</div>
+    <div style="height: 260px;"><canvas id="chUsers"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title"><span class="ic">🎯</span> Status distribution</div>
+    <div style="height: 260px;"><canvas id="chStatus"></canvas></div>
+  </div>
+</section>
+
+{# ---------- Recent activity ---------- #}
+<section class="card mt-2">
+  <div class="between mb-1">
+    <div class="card-title" style="margin:0;">
+      <span class="ic">🕘</span> Recent activity
+    </div>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('history') }}">
+      View all →
+    </a>
+  </div>
+
+  <div class="scroll-x">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>User</th>
+          <th>Module</th>
+          <th>Status</th>
+          <th class="text-right">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in recent %}
+          <tr>
+            <td class="nowrap text-muted small">{{ r.created_at[:16].replace('T',' ') }}</td>
+            <td>{{ r.user }}</td>
+            <td>{{ r.module_name }}</td>
+            <td><span class="pill pill-{{ r.status }}">{{ r.status }}</span></td>
+            <td class="text-right">
+              <a class="btn btn-ghost btn-sm"
+                 href="{{ url_for('history') }}#calc-{{ r.id }}">Open ↗</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="text-center text-muted">
+            No activity yet — invite your team from the Users page.
+          </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ---------- Chart.js payload (server-rendered JSON) ---------- #}
+<script id="chartPayload" type="application/json">
+  {{ charts | tojson }}
+</script>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+(function () {
+  // Wait for Chart.js (loaded with `defer` in head_extra)
+  function whenReady(cb) {
+    if (window.Chart) cb();
+    else setTimeout(() => whenReady(cb), 40);
+  }
+
+  // Read Ramboll palette from CSS variables so charts follow theme + accent
+  function cssVar(name, fallback) {
+    const v = getComputedStyle(document.documentElement)
+                .getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  // Distinct-but-harmonious palette for categorical charts
+  function palette(n) {
+    const base = ["#1F3F89", "#00A0DC", "#059669", "#7C3AED",
+                  "#EA580C", "#E11D48", "#0EA5E9", "#F59E0B",
+                  "#10B981", "#8B5CF6"];
+    const out = [];
+    for (let i = 0; i < n; i++) out.push(base[i % base.length]);
+    return out;
+  }
+
+  whenReady(() => {
+    const data = JSON.parse(document.getElementById("chartPayload").textContent);
+    const ink   = cssVar("--ink",       "#0F172A");
+    const muted = cssVar("--ink-muted", "#6B7280");
+    const line  = cssVar("--line",      "#E1E7F0");
+    const accent      = cssVar("--accent",      "#1F3F89");
+    const accentSoft  = cssVar("--accent-soft", "#E8EEFB");
+
+    // Global defaults
+    Chart.defaults.color              = muted;
+    Chart.defaults.borderColor        = line;
+    Chart.defaults.font.family        =
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
+    Chart.defaults.plugins.legend.labels.color = ink;
+
+    // 1) Trend — last 7 days (line)
+    new Chart(document.getElementById("chTrend"), {
+      type: "line",
+      data: {
+        labels: data.trend.labels,
+        datasets: [{
+          label: "Calculations per day",
+          data:  data.trend.values,
+          borderColor: accent,
+          backgroundColor: accentSoft,
+          tension: 0.35,
+          fill: true,
+          pointRadius: 4,
+          pointBackgroundColor: accent,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: line } },
+          y: { beginAtZero: true, grid: { color: line },
+               ticks: { precision: 0 } },
+        },
+      },
+    });
+
+    // 2) By module (doughnut)
+    new Chart(document.getElementById("chModules"), {
+      type: "doughnut",
+      data: {
+        labels: data.by_module.labels,
+        datasets: [{
+          data: data.by_module.values,
+          backgroundColor: palette(data.by_module.labels.length),
+          borderColor: cssVar("--panel", "#fff"),
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: "62%",
+        plugins: { legend: { position: "right", labels: { boxWidth: 10 } } },
+      },
+    });
+
+    // 3) By user (bar)
+    new Chart(document.getElementById("chUsers"), {
+      type: "bar",
+      data: {
+        labels: data.by_user.labels,
+        datasets: [{
+          label: "Calculations",
+          data:  data.by_user.values,
+          backgroundColor: palette(data.by_user.labels.length),
+          borderRadius: 6,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, grid: { color: line },
+               ticks: { precision: 0 } },
+        },
+      },
+    });
+
+    // 4) Status distribution (polar area)
+    const STATUS_COLORS = {
+      draft:    cssVar("--ink-muted", "#6B7280"),
+      pending:  cssVar("--warn",      "#F59E0B"),
+      approved: cssVar("--ok",        "#10B981"),
+      rejected: cssVar("--error",     "#EF4444"),
+    };
+    new Chart(document.getElementById("chStatus"), {
+      type: "polarArea",
+      data: {
+        labels: data.by_status.labels,
+        datasets: [{
+          data: data.by_status.values,
+          backgroundColor: data.by_status.labels.map(
+            k => (STATUS_COLORS[k] || accent) + "cc"),   // 80% alpha
+          borderColor: cssVar("--panel", "#fff"),
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: "right", labels: { boxWidth: 10 } } },
+        scales: {
+          r: { grid: { color: line }, angleLines: { color: line },
+               ticks: { display: false } },
+        },
+      },
+    });
+  });
+})();
+</script>
+{% endblock %}

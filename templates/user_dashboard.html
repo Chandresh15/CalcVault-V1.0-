@@ -1,0 +1,236 @@
+{# ============================================================
+   templates/user_dashboard.html — CalcVault (No AI)
+   ============================================================ #}
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+
+{# ============ HERO WELCOME ============ #}
+<section class="hero">
+  <div class="hero-eyebrow">Welcome back</div>
+  <h1 class="hero-title">
+    {{ current_user.full_name or current_user.username }}
+    <span class="wave">👋</span>
+  </h1>
+  <p class="hero-sub">
+    Pick a calculation module below, or continue where you left off from
+    <a href="{{ url_for('history') }}">your history</a>.
+    All formulas are validated against the Ramboll internal hydraulic standard.
+  </p>
+  <div class="hero-actions">
+    <a class="btn" href="{{ url_for('history') }}">📚 My History</a>
+    <a class="btn btn-ghost" href="{{ url_for('batch') }}">📥 Batch Import</a>
+    <a class="btn btn-ghost" href="{{ url_for('pumps_list') }}">⚙️ Pump Databank</a>
+  </div>
+</section>
+
+{# ============ KPI ROW ============ #}
+<section class="grid grid-3 mb-2">
+  <div class="kpi">
+    <div class="kpi-head">
+      <span class="kpi-label">My Calculations</span>
+      <div class="kpi-icon">📊</div>
+    </div>
+    <div class="kpi-value">{{ kpi.total }}</div>
+    <div class="kpi-sub">All-time total</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-head">
+      <span class="kpi-label">Pending Review</span>
+      <div class="kpi-icon tone-warn">⏳</div>
+    </div>
+    <div class="kpi-value">{{ kpi.pending }}</div>
+    <div class="kpi-sub">Awaiting owner approval</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-head">
+      <span class="kpi-label">Approved</span>
+      <div class="kpi-icon tone-ok">✓</div>
+    </div>
+    <div class="kpi-value">{{ kpi.approved }}</div>
+    <div class="kpi-sub">Signed-off runs</div>
+  </div>
+</section>
+
+{# ============ QUICK ACTIONS (full width, 6 across) ============ #}
+<section class="card mt-3 mb-3">
+  <div class="between mb-1">
+    <div class="card-title" style="margin:0;">
+      <span class="ic">⚡</span> Quick actions
+    </div>
+    <span class="text-muted small">One-click shortcuts to the modules you use most.</span>
+  </div>
+  <div class="qa-grid" style="grid-template-columns: repeat(6, 1fr);">
+    <a class="qa" href="{{ url_for('calc_view', slug='pipe-diameter') }}">
+      <div class="qa-ic">📏</div><div>Size a pipe</div>
+    </a>
+    <a class="qa" href="{{ url_for('calc_view', slug='pipe-head-loss') }}">
+      <div class="qa-ic">💧</div><div>Head loss</div>
+    </a>
+    <a class="qa" href="{{ url_for('total_pump_head') }}">
+      <div class="qa-ic">⚙️</div><div>Pump head</div>
+    </a>
+    <a class="qa" href="{{ url_for('calc_view', slug='tank-volume') }}">
+      <div class="qa-ic">🛢️</div><div>Tank volume</div>
+    </a>
+    <a class="qa" href="{{ url_for('batch') }}">
+      <div class="qa-ic">📥</div><div>Batch run</div>
+    </a>
+    <a class="qa" href="{{ url_for('history') }}">
+      <div class="qa-ic">📚</div><div>My history</div>
+    </a>
+  </div>
+</section>
+
+{# ============ HYDRAULIC MODULES ============ #}
+<section class="between mt-3 mb-1" style="align-items:flex-end;">
+  <div>
+    <h2 style="margin:0;">Hydraulic Calculation Modules</h2>
+    <p class="text-muted small" style="margin:.3rem 0 0;">
+      Click any tile to open. Live preview updates as you type — press
+      <kbd>Enter</kbd> to jump to the next field.
+    </p>
+  </div>
+  <a class="btn btn-soft btn-sm" href="{{ url_for('pumps_list') }}">
+    View all resources →
+  </a>
+</section>
+
+<section class="grid grid-3 mt-2">
+  {% for slug, cfg in HYDRAULIC_MODULES.items() %}
+    <a class="tile" href="{{ url_for('calc_view', slug=slug) }}">
+      <div class="tile-ic">{{ cfg.icon }}</div>
+      <b>{{ cfg.name }}</b>
+      <p>{{ cfg.category }} · Module {{ cfg.id }}</p>
+      <span class="cta">Open <span aria-hidden="true">→</span></span>
+    </a>
+  {% endfor %}
+
+  <a class="tile featured" href="{{ url_for('total_pump_head') }}">
+    <div class="tile-ic">💧</div>
+    <b>Total Discharge / Pump Head</b>
+    <p>Combined · Module 11 · Static + Friction + Minor + Residual</p>
+    <span class="cta">Open <span aria-hidden="true">→</span></span>
+  </a>
+</section>
+
+{# ============ CUSTOM MODULES ============ #}
+{% if custom %}
+  <h2 class="mt-3">Custom Modules</h2>
+  <p class="text-muted small mb-1">
+    Modules published by your team's Owner — same live-preview experience.
+  </p>
+  <section class="grid grid-3 mt-1">
+    {% for m in custom %}
+      <a class="tile" href="{{ url_for('custom_module_view', slug=m.slug) }}">
+        <div class="tile-ic">{{ m.icon }}</div>
+        <b>{{ m.name }}</b>
+        <p>
+          {{ m.category }}
+          {% if m.status != 'active' %}
+            · <span class="pill pill-{{ m.status }}">{{ m.status }}</span>
+          {% endif %}
+        </p>
+        <span class="cta">Open <span aria-hidden="true">→</span></span>
+      </a>
+    {% endfor %}
+  </section>
+{% endif %}
+
+{# ============ ACTIVITY + QUICK REFERENCE ============ #}
+<section class="grid mt-3" style="grid-template-columns: 1.35fr 1fr; gap: 20px;">
+  <div class="card">
+    <div class="between mb-1">
+      <div class="card-title" style="margin:0;">
+        <span class="ic">🕐</span> Recent activity
+      </div>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('history') }}">
+        View all →
+      </a>
+    </div>
+
+    <ul class="timeline" id="activityTimeline">
+      <li>
+        <div class="timeline-title">Loading recent activity…</div>
+        <div class="timeline-meta">Fetching your latest calculations</div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="ic">📖</span> Quick reference</div>
+    <div class="vstack" style="gap:12px;">
+      <div>
+        <b class="small">Hazen-Williams C-factor</b>
+        <p class="text-muted small" style="margin:.2rem 0 0;">
+          PVC 150 · DI cement-lined 140 · Steel new 140 · Cast iron old 100.
+        </p>
+      </div>
+      <div>
+        <b class="small">Kutter's n (Manning)</b>
+        <p class="text-muted small" style="margin:.2rem 0 0;">
+          Smooth concrete 0.013 · Brick 0.015 · Earth 0.025.
+        </p>
+      </div>
+      <div>
+        <b class="small">Minor-loss fittings</b>
+        <p class="text-muted small" style="margin:.2rem 0 0;">
+          22 CPHEEO fittings preloaded on the Total Discharge Head page.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+/* ============ ACTIVITY TIMELINE ============ */
+(async function loadActivity() {
+  const list = document.getElementById("activityTimeline");
+  if (!list) return;
+  try {
+    const r = await fetch("/api/notifications", { credentials: "same-origin" });
+    const d = await r.json();
+    if (!d.items || d.items.length === 0) {
+      list.innerHTML = `
+        <li>
+          <div class="timeline-title">No recent activity yet</div>
+          <div class="timeline-meta">
+            Open any module from the sidebar to log your first calculation.
+          </div>
+        </li>`;
+      return;
+    }
+    const rel = (iso) => {
+      const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+      if (s < 60) return s + "s ago";
+      if (s < 3600) return Math.round(s/60) + "m ago";
+      if (s < 86400) return Math.round(s/3600) + "h ago";
+      return Math.round(s/86400) + "d ago";
+    };
+    const esc = (s) => String(s || "").replace(/[&<>"']/g,
+      c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+    list.innerHTML = d.items.slice(0, 6).map(n => `
+      <li data-kind="${n.kind || 'info'}">
+        <div class="timeline-title">${esc(n.title)}</div>
+        <div class="timeline-meta">
+          ${esc(n.message || '')}
+          <b>·</b> ${rel(n.created_at)}
+        </div>
+      </li>`).join("");
+  } catch (_) {
+    list.innerHTML = `
+      <li>
+        <div class="timeline-title">Activity temporarily unavailable</div>
+        <div class="timeline-meta">Try refreshing the page.</div>
+      </li>`;
+  }
+})();
+</script>
+{% endblock %}

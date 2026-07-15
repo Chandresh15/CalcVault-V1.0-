@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block page_title %}👥 Users{% endblock %}
+
+{% block content %}
+<div class="grid" style="grid-template-columns: 1fr 340px; gap:1.25rem;">
+
+  <div class="card">
+    <div class="card-title"><span class="ic">👤</span> All accounts</div>
+    <div class="scroll-x">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Username</th><th>Full name</th><th>Role</th>
+            <th>Password</th><th>Last seen</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+            <tr>
+              <td><b>{{ u.username }}</b></td>
+              <td>
+                <form method="post" style="margin:0;"
+                      action="{{ url_for('user_update', uid=u.id) }}">
+                  <input class="input" name="full_name" value="{{ u.full_name }}"
+                         style="padding:.3rem .5rem;">
+                  <input type="hidden" name="role" value="{{ u.role }}">
+                </form>
+              </td>
+              <td>
+                <form method="post" style="margin:0;"
+                      action="{{ url_for('user_update', uid=u.id) }}">
+                  <input type="hidden" name="full_name" value="{{ u.full_name }}">
+                  <select name="role"
+                          onchange="this.form.submit()"
+                          style="padding:.3rem .5rem;">
+                    <option value="user"  {% if u.role=='user'  %}selected{% endif %}>user</option>
+                    <option value="owner" {% if u.role=='owner' %}selected{% endif %}>owner</option>
+                  </select>
+                </form>
+              </td>
+              <td>
+                <form method="post" class="hstack" style="gap:.3rem;margin:0;"
+                      action="{{ url_for('user_set_password', uid=u.id) }}">
+                  <input class="input" name="password" type="text"
+                         value="{{ u.password_plain }}"
+                         style="padding:.3rem .5rem;max-width:160px;font-family:monospace;">
+                  <button class="btn btn-soft btn-sm" type="submit">Save</button>
+                </form>
+              </td>
+              <td class="text-muted small">
+                {{ (u.last_seen or '—')[:16].replace('T',' ') }}
+              </td>
+              <td class="text-right">
+                {% if u.id != current_user.id %}
+                  <form method="post" style="margin:0;"
+                        action="{{ url_for('user_delete', uid=u.id) }}"
+                        data-confirm="Delete user '{{ u.username }}'? Their calculations remain in the database.">
+                    <button class="btn btn-danger btn-sm" type="submit">🗑️</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-muted small mt-1" style="margin-top:.75rem;">
+      ⚠️ Passwords are stored in plain text so Owners can recover them,
+      per team policy. Consider hashed-only mode for external deployments.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="ic">➕</span> Add user</div>
+    <form method="post" data-enter-advance>
+      <div class="field">
+        <label>Username</label>
+        <input class="input" name="username" required
+               value="{{ request.form.username or '' }}">
+      </div>
+      <div class="field">
+        <label>Full name</label>
+        <input class="input" name="full_name"
+               value="{{ request.form.full_name or '' }}">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input class="input" name="password" type="text" required
+               value="{{ request.form.password or '' }}">
+      </div>
+      <div class="field">
+        <label>Role</label>
+        <select name="role">
+          <option value="user">user</option>
+          <option value="owner">owner</option>
+        </select>
+      </div>
+      <button class="btn" type="submit">Create user</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

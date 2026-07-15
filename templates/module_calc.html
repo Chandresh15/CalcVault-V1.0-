@@ -1,0 +1,541 @@
+{# ============================================================
+   templates/module_calc.html — CalcVault (Modular v2)
+   Data-driven page for every hydraulic / mechanical module.
+   Add a module → add one dict entry → this template renders it.
+   ============================================================ #}
+{% extends "base.html" %}
+{% block title %}{{ cfg.name }}{% endblock %}
+{% block page_title %}{{ cfg.icon }} {{ cfg.name }}{% endblock %}
+
+{% block content %}
+<div class="calc-layout">
+
+  {# ============ LEFT — inputs, formula, references ============ #}
+  <div>
+
+    {# ---- Formula (superscripts rendered via inline HTML) ---- #}
+    <div class="formula-box mb-2">
+      {{ cfg.formula
+         | replace('^0.666','<sup>0.666</sup>')
+         | replace('^1.852','<sup>1.852</sup>')
+         | replace('^2.63', '<sup>2.63</sup>')
+         | replace('^(2/3)','<sup>2/3</sup>')
+         | replace('^2',    '<sup>2</sup>')
+         | replace('_h',    '<sub>h</sub>')
+         | replace('_p',    '<sub>p</sub>')
+         | replace('_m',    '<sub>m</sub>')
+         | replace('*','·')
+         | safe }}
+    </div>
+
+    {% if error %}
+      <div class="flash flash-error mb-2">
+        ⚠️ <span>{{ error }}</span>
+      </div>
+    {% endif %}
+
+    <form method="post" id="calcForm" data-enter-advance>
+      <div class="card">
+        <div class="card-title">
+          <span class="ic">✏️</span> Inputs
+        </div>
+
+        {% for var, label, unit, default, qty in cfg.inputs %}
+          <div class="field">
+            <label for="f_{{ var }}">
+              {{ label }}
+              {% if unit and unit != '—' %}
+                <span class="hint">({{ unit }})</span>
+              {% endif %}
+            </label>
+            <input class="input"
+                   id="f_{{ var }}"
+                   name="{{ var }}"
+                   type="number" step="any"
+                   inputmode="decimal"
+                   placeholder="{{ default }}"
+                   value="{{ values[var] }}"
+                   required>
+          </div>
+        {% endfor %}
+
+        <div class="hstack wrap mt-1" style="gap:.5rem;">
+          <button class="btn" type="submit" data-i18n="btn.submit">
+            Calculate
+          </button>
+          <a class="btn btn-ghost" href="{{ url_for('calc_view', slug=slug) }}">
+            Reset
+          </a>
+          <span class="spacer"></span>
+          <a class="btn btn-soft"
+             href="{{ url_for('batch_template', slug=slug) }}">
+            📄 Blank template
+          </a>
+        </div>
+      </div>
+    </form>
+
+    {# ---- Reference table (C-factor / Kutter / Fluid density / etc.) ---- #}
+    {% if cfg.reference %}
+      {% set ref = cfg.reference %}
+      <details class="ref mt-2">
+        <summary>
+          {% if ref.kind == 'c_factor'         %}Hazen-Williams C-factor reference
+          {% elif ref.kind == 'n_kutter'       %}Kutter's n (Manning) reference
+          {% elif ref.kind == 'fluid_density'  %}Fluid density reference (kg/m³)
+          {% elif ref.kind == 'material_factor'%}Screw conveyor material factor (Fm)
+          {% elif ref.kind == 'gas_properties' %}Gas properties reference (k, MW)
+          {% else %}Reference values
+          {% endif %}
+        </summary>
+        <table>
+          <thead>
+            <tr>
+              <th>
+                {% if ref.kind == 'c_factor' %}Material
+                {% elif ref.kind == 'n_kutter' %}Surface
+                {% elif ref.kind == 'gas_properties' %}Gas
+                {% else %}Material
+                {% endif %}
+              </th>
+              {% if ref.kind == 'gas_properties' %}
+                <th class="text-right">k</th>
+                <th class="text-right">MW</th>
+              {% else %}
+                <th class="text-right">
+                  {% if ref.kind == 'material_factor' %}Fm
+                  {% elif ref.kind == 'c_factor' %}C
+                  {% elif ref.kind == 'n_kutter' %}n
+                  {% else %}Value{% endif %}
+                </th>
+              {% endif %}
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in ref.table %}
+              {# Determine which field the Use button should apply #}
+              {% if row.apply %}
+                {# multi-field apply (e.g. gas properties) #}
+                {% set apply_json = row.apply | tojson %}
+              {% else %}
+                {% if ref.kind == 'c_factor'          %}{% set fname = 'c_factor'       %}
+                {% elif ref.kind == 'n_kutter'        %}{% set fname = 'n_kutter'       %}
+                {% elif ref.kind == 'fluid_density'   %}{% set fname = 'density_kg_m3'  %}
+                {% elif ref.kind == 'material_factor' %}{% set fname = 'material_factor'%}
+                {% else %}{% set fname = 'value' %}
+                {% endif %}
+                {% set apply_json = ('{"' ~ fname ~ '": ' ~ row.c ~ '}') %}
+              {% endif %}
+              <tr>
+                <td>{{ row.material or row.surface }}</td>
+                {% if ref.kind == 'gas_properties' %}
+                  <td class="text-right text-mono">{{ row.c }}</td>
+                  <td class="text-right text-mono">{{ row.extra }}</td>
+                {% else %}
+                  <td class="text-right text-mono">{{ row.c }}</td>
+                {% endif %}
+                <td class="text-right">
+                  <button type="button"
+                          class="btn btn-soft use"
+                          data-use='{{ apply_json | safe }}'
+                          data-use-title="Value applied">Use</button>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+    {% endif %}
+
+  </div>
+
+  {# ============ RIGHT — live preview + verified result (+ pumps) ============ #}
+  <div>
+
+    <div class="card sticky-preview mb-2">
+      <div class="card-title">
+        <span class="ic">⚡</span> Live preview
+      </div>
+      <div id="livePreview">
+        <div class="text-muted small">
+          Enter values to see the live estimate.
+        </div>
+      </div>
+      <div class="text-muted small mt-1">
+        Client-side estimate. Press <b>Calculate</b> to record a
+        server-verified run.
+      </div>
+    </div>
+
+    {% if result %}
+      <div class="result-card mb-2">
+        {% for var, label, unit, is_primary in cfg.outputs %}
+          {% if is_primary and result.get(var) is not none %}
+            <div class="result-primary">
+              {{ '%g' % result[var] }} <small>{{ unit }}</small>
+            </div>
+            <div class="text-muted small mb-1">{{ label }}</div>
+          {% endif %}
+        {% endfor %}
+
+        <dl class="result-grid">
+          {% for var, label, unit, is_primary in cfg.outputs %}
+            {% if not is_primary and result.get(var) is not none %}
+              <dt>{{ label }}</dt>
+              <dd>{{ '%g' % result[var] }}
+                <span class="text-muted small">{{ unit }}</span></dd>
+            {% endif %}
+          {% endfor %}
+        </dl>
+
+        {% if result.warning %}
+          <div class="flash flash-warn mt-1">
+            ⚠️ <span>{{ result.warning }}</span>
+          </div>
+        {% endif %}
+
+        <div class="hstack wrap mt-2" style="gap:.5rem;">
+          <a class="btn btn-soft" href="{{ url_for('history') }}">
+            📚 See in History
+          </a>
+        </div>
+      </div>
+    {% endif %}
+
+    {# ---- Reference pumps panel (only when module opts in) ---- #}
+    {% if cfg.show_pump_suggest %}
+      <div class="card">
+        <div class="card-title"><span class="ic">⚙️</span> Reference pumps</div>
+        <div class="text-muted small mb-1">
+          Nearest matches from the Pump Databank (±25 % of duty point).
+        </div>
+        <div id="pumpSuggest">
+          <div class="text-muted small">Enter Q and Head to see matches.</div>
+        </div>
+        <div class="hstack mt-1">
+          <a class="btn btn-ghost btn-sm" href="{{ url_for('pumps_list') }}">
+            Open Pump Databank →
+          </a>
+        </div>
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+
+
+{# ============ Client-side compute config ============ #}
+<script id="calcCfg" type="application/json">
+  {{ {
+      "slug":              slug,
+      "inputs":            cfg.inputs | map('list') | list,
+      "outputs":           cfg.outputs | map('list') | list,
+      "show_pump_suggest": cfg.show_pump_suggest | default(false)
+     } | tojson }}
+</script>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+(function () {
+  const cfg = JSON.parse(document.getElementById("calcCfg").textContent);
+  const form   = document.getElementById("calcForm");
+  const target = document.getElementById("livePreview");
+  if (!form || !target || !window.CV) return;
+
+  const PI  = Math.PI, G = 9.81;
+  const num = (v) => { const x = parseFloat(v); return isFinite(x) ? x : NaN; };
+  const DN  = [15,20,25,32,40,50,65,80,100,125,150,200,250,300,350,400,450,
+               500,600,700,800,900,1000,1200,1400,1600,1800,2000,2200,2400,
+               2600,2800,3000];
+  const nextDN = (mm) => { for (const d of DN) if (d >= mm) return d; return DN[DN.length-1]; };
+  const roundUp50 = (m) => Math.ceil(m * 20) / 20;
+  const IEC_MOTORS = [0.18,0.25,0.37,0.55,0.75,1.1,1.5,2.2,3.0,4.0,5.5,7.5,
+                      11,15,18.5,22,30,37,45,55,75,90,110,132,160,200,250,
+                      315,355,400,450,500,630,800,1000];
+  const nextIEC = (kw) => { for (const m of IEC_MOTORS) if (m >= kw) return m;
+                            return IEC_MOTORS[IEC_MOTORS.length-1]; };
+
+  // ----------------------------------------------------------------
+  //  Slug-specific compute functions
+  // ----------------------------------------------------------------
+  const CALC = {
+    "pipe-diameter": (v) => {
+      const Q = num(v.flow_m3h), V = num(v.velocity_ms);
+      if (!(Q > 0 && V > 0)) return null;
+      const Qsi = Q / 3600, A = Qsi / V, d = Math.sqrt(4*A/PI) * 1000;
+      const dn = nextDN(d), Va = Qsi / (PI*(dn/1000)**2/4);
+      return {
+        primary: { label:"Required ID", value:d.toFixed(2), unit:"mm" },
+        details: [["Provided ID (nearest DN)", dn, "mm"],
+                  ["Actual velocity", Va.toFixed(3), "m/s"]],
+      };
+    },
+    "pipe-head-loss": (v) => {
+      const Q = num(v.flow_m3h), C = num(v.c_factor),
+            d = num(v.pipe_id_mm)/1000, L = num(v.length_m);
+      if (!(Q>0 && C>0 && d>0 && L>0)) return null;
+      const j = Math.pow(Q/(1000.8*C*Math.pow(d,2.63)),1.852), H = j*L;
+      const A = PI*d*d/4, Vp = (Q/3600)/A;
+      return {
+        primary: { label:"Head loss", value:H.toFixed(4), unit:"m" },
+        details: [["Gradient", j.toFixed(6), "m/m"],
+                  ["Velocity in pipe", Vp.toFixed(3), "m/s"]],
+      };
+    },
+    "flow-through-pipe": (v) => {
+      const d = num(v.dia_mm)/1000, V = num(v.velocity_ms);
+      if (!(d>0 && V>0)) return null;
+      const A = PI*d*d/4, Qsi = A*V;
+      return {
+        primary: { label:"Flow", value:(Qsi*3600).toFixed(2), unit:"m³/hr" },
+        details: [["Flow", (Qsi*1000).toFixed(3), "L/s"],
+                  ["Area", A.toFixed(6), "m²"]],
+      };
+    },
+    "channel-sizing": (v) => {
+      const Q=num(v.flow_m3h), V=num(v.velocity_ms), LD=num(v.liquid_depth_mm)/1000;
+      if (!(Q>0 && V>0 && LD>0)) return null;
+      const Qsi = Q/3600, A = Qsi/V, W = A/LD;
+      const Wp = roundUp50(W), Ap = Wp*LD, Va = Qsi/Ap;
+      return {
+        primary: { label:"Required width", value:W.toFixed(3), unit:"m" },
+        details: [["Provided width", Wp.toFixed(3), "m"],
+                  ["Actual velocity", Va.toFixed(3), "m/s"]],
+      };
+    },
+    "channel-head-loss": (v) => {
+      const Q=num(v.flow_m3h), W=num(v.width_m), LD=num(v.liquid_depth_m),
+            L=num(v.length_m), n=num(v.n_kutter);
+      if (!(Q>0 && W>0 && LD>0 && L>0 && n>0)) return null;
+      const Qsi = Q/3600, A = W*LD, P = W + 2*LD, R = A/P;
+      const s = Math.pow((Qsi*n)/(A*Math.pow(R,2/3)),2), H = s*L;
+      return {
+        primary: { label:"Total head loss", value:H.toFixed(4), unit:"m" },
+        details: [["Hydraulic radius", R.toFixed(4), "m"],
+                  ["Velocity", (Qsi/A).toFixed(3), "m/s"]],
+      };
+    },
+    "tank-volume": (v) => {
+      const D=num(v.diameter_m), H=num(v.total_height_m), FB=num(v.freeboard_m);
+      if (!(D>0 && H>0 && FB>=0 && FB<H)) return null;
+      const A = PI*D*D/4, Vtot = A*H, Veff = A*(H-FB);
+      return {
+        primary: { label:"Total volume", value:Vtot.toFixed(2), unit:"m³" },
+        details: [["Effective volume", Veff.toFixed(2), "m³"],
+                  ["C/S area", A.toFixed(4), "m²"]],
+      };
+    },
+    "liquid-height": (v) => {
+      const V=num(v.volume_m3), D=num(v.diameter_m),
+            H=num(v.total_height_m), FB=num(v.freeboard_m);
+      if (!(V>0 && D>0 && H>0 && FB>=0)) return null;
+      const A = PI*D*D/4, Hliq = V/A, Heff = Hliq - FB;
+      return {
+        primary: { label:"Effective height", value:(Heff*1000).toFixed(1), unit:"mm" },
+        details: [["Effective height", Heff.toFixed(4), "m"],
+                  ["C/S area", A.toFixed(4), "m²"]],
+      };
+    },
+    "tank-diameter": (v) => {
+      const V=num(v.volume_m3), H=num(v.total_height_m);
+      if (!(V>0 && H>0)) return null;
+      const A = V/H, D = Math.sqrt(4*A/PI);
+      return {
+        primary: { label:"Diameter", value:D.toFixed(3), unit:"m" },
+        details: [["C/S area", A.toFixed(3), "m²"]],
+      };
+    },
+    "bell-mouth": (v) => {
+      const Q=num(v.flow_m3h), D=num(v.bell_diameter_m);
+      if (!(Q>0 && D>0)) return null;
+      const L = PI*D, H = Math.pow(Q/(1.84*L),0.666);
+      return {
+        primary: { label:"Head loss", value:H.toFixed(3), unit:"m" },
+        details: [["Circumference", L.toFixed(4), "m"]],
+      };
+    },
+    "weir": (v) => {
+      const Q=num(v.flow_m3h), L=num(v.weir_length_m);
+      if (!(Q>0 && L>0)) return null;
+      const Qsi = Q/3600, H = 0.467 * Math.pow(Qsi/L,0.666);
+      return {
+        primary: { label:"Head loss over weir", value:H.toFixed(4), unit:"m" },
+        details: [["Flow", Qsi.toFixed(4), "m³/s"]],
+      };    /* ---------------- Module 13: Pump Affinity Laws ---------------- */
+    "pump-affinity": (v) => {
+      const Q1 = num(v.flow_m3h_1),   H1 = num(v.head_m_1),
+            P1 = num(v.power_kw_1),   N1 = num(v.speed_rpm_1),
+            N2 = num(v.speed_rpm_2),  D1 = num(v.impeller_mm_1),
+            D2 = num(v.impeller_mm_2);
+      if (!(Q1>0 && H1>0 && P1>0 && N1>0 && N2>0 && D1>0 && D2>0)) return null;
+      const rN = N2/N1, rD = D2/D1;
+      const Q2 = Q1 * rN * rD;
+      const H2 = H1 * rN*rN * rD*rD;
+      const P2 = P1 * rN*rN*rN * rD*rD*rD;
+      return {
+        primary: { label:"New Flow (Q₂)", value:Q2.toFixed(2), unit:"m³/hr" },
+        details: [
+          ["New head (H₂)",    H2.toFixed(3), "m"],
+          ["New power (P₂)",   P2.toFixed(3), "kW"],
+          ["Speed ratio",      rN.toFixed(4), ""],
+          ["Diameter ratio",   rD.toFixed(4), ""],
+        ],
+      };
+    },
+
+    /* ---------------- Module 14: Air Blower Power ---------------- */
+    "blower-power": (v) => {
+      const Q  = num(v.flow_nm3h);
+      const p1 = num(v.p_suction_kpa_a);
+      const p2 = num(v.p_discharge_kpa_a);
+      const Tc = num(v.temp_suction_c);
+      const k  = num(v.k_ratio);
+      const MW = num(v.gas_mw);
+      let ea   = num(v.eta_adiabatic_pct);
+      let em   = num(v.eta_motor_pct);
+      if (!(Q>0 && p1>0 && p2>p1 && k>1 && MW>0 && ea>0 && em>0 && isFinite(Tc)))
+        return null;
+      if (ea > 1) ea /= 100;
+      if (em > 1) em /= 100;
+      if (ea >= 1 || em >= 1) return null;
+
+      const R_UNIV = 8314.5;
+      const R      = R_UNIV / MW;
+      const Cp     = k * R / (k - 1);
+      const T1     = Tc + 273.15;
+      const rhoN   = (MW * 101325) / (R_UNIV * 273.15);
+      const mDot   = Q * rhoN / 3600;
+      const ratio  = p2 / p1;
+      const n      = (k - 1) / k;
+
+      const Pad_ideal  = mDot * Cp * T1 * (Math.pow(ratio, n) - 1);
+      const Piso_ideal = mDot * R  * T1 * Math.log(ratio);
+
+      const Pad  = (Pad_ideal  / ea) / 1000;
+      const Piso = (Piso_ideal / ea) / 1000;
+      const Pmot = Pad / em;
+
+      const T2_isen = T1 * Math.pow(ratio, n);
+      const T2_act  = T1 + (T2_isen - T1) / ea;
+
+      const rec = nextIEC(Pmot * 1.15);
+
+      return {
+        primary: { label:"Adiabatic Shaft Power", value:Pad.toFixed(3), unit:"kW" },
+        details: [
+          ["Isothermal shaft power",  Piso.toFixed(3),         "kW"],
+          ["Motor input power",       Pmot.toFixed(3),         "kW"],
+          ["Discharge temperature",  (T2_act - 273.15).toFixed(2), "°C"],
+          ["Compression ratio",       ratio.toFixed(3),        ""],
+          ["Mass flow",               mDot.toFixed(4),         "kg/s"],
+          ["Recommended IEC motor",   rec.toFixed(2),          "kW"],
+        ],
+      };
+    },
+
+    /* ---------------- Module 15: Screw Conveyor Sizing ---------------- */
+    "screw-conveyor": (v) => {
+      const Dmm = num(v.screw_dia_mm), dmm = num(v.shaft_dia_mm),
+            Smm = num(v.pitch_mm),     N   = num(v.rpm),
+            L   = num(v.length_m),     theta = num(v.incline_deg),
+            rho = num(v.density_kg_m3),
+            lam = num(v.fill_factor_pct),
+            Fm  = num(v.material_factor);
+      if (!(Dmm>0 && dmm>=0 && Smm>0 && N>0 && L>0 &&
+            rho>0 && lam>0 && Fm>0 && dmm<Dmm && isFinite(theta))) return null;
+
+      const D = Dmm/1000, d = dmm/1000, S = Smm/1000;
+      const A = Math.PI/4 * (D*D - d*d);
+      const Qm3h = A * S * N * (lam/100) * 60;
+      const Qtph = Qm3h * rho / 1000;
+
+      const th = theta * Math.PI / 180;
+      const Pmat = (Qtph * L * Fm) / 367;
+      const Pinc = (Qtph * L * Math.sin(th)) / 367;
+      const Pemp = (Dmm * L * N) / 100000;
+
+      const Pshaft = (Pmat + Pinc + Pemp) * 1.2;
+      const Pmot   = Pshaft / 0.90;
+      const rec    = nextIEC(Pmot);
+
+      return {
+        primary: { label:"Volumetric Capacity", value:Qm3h.toFixed(2), unit:"m³/hr" },
+        details: [
+          ["Mass capacity",         Qtph.toFixed(3),   "t/hr"],
+          ["Material power",        Pmat.toFixed(3),   "kW"],
+          ["Incline power",         Pinc.toFixed(3),   "kW"],
+          ["Empty-screw power",     Pemp.toFixed(3),   "kW"],
+          ["Total shaft power",     Pshaft.toFixed(3), "kW"],
+          ["Motor input power",     Pmot.toFixed(3),   "kW"],
+          ["Recommended IEC motor", rec.toFixed(2),    "kW"],
+        ],
+      };
+    },
+    },
+
+    /* ---------------- Module 12: Pump Power ---------------- */
+    "pump-power": (v) => {
+      const Q  = num(v.flow_m3h);
+      const H  = num(v.head_m);
+      let ep = num(v.pump_eff_pct);
+      let em = num(v.motor_eff_pct);
+      const rho = num(v.density_kg_m3) || 1000;
+      if (!(Q>0 && H>0 && ep>0 && em>0)) return null;
+      if (ep > 1) ep /= 100;
+      if (em > 1) em /= 100;
+      if (ep >= 1 || em >= 1) return null;
+
+      const Qsi   = Q / 3600;
+      const Phyd  = rho * G * Qsi * H;        // W
+      const Psh   = Phyd / ep;
+      const Pin   = Psh  / em;
+      const Pkw   = Pin  / 1000;
+      const rec   = nextIEC(Pkw * 1.15);
+      const sp    = Pkw / Q;                   // kWh/m³
+      return {
+        primary: { label:"Hydraulic Power", value:(Phyd/1000).toFixed(3), unit:"kW" },
+        details: [
+          ["Shaft power (P_shaft)",    (Psh/1000).toFixed(3), "kW"],
+          ["Motor input (P_input)",    Pkw.toFixed(3),        "kW"],
+          ["Recommended IEC motor",    rec.toFixed(2),        "kW"],
+          ["Specific energy",          sp.toFixed(4),         "kWh/m³"],
+        ],
+      };
+    },
+  };
+
+  const fn = CALC[cfg.slug];
+  if (!fn) return;
+
+  CV.liveCalc({
+    form: form,
+    target: target,
+    compute: (values) => fn(values),
+  });
+
+  /* ---------- Reference pumps side panel (optional) ---------- */
+  if (cfg.show_pump_suggest) {
+    const box = document.getElementById("pumpSuggest");
+    if (box) {
+      const refresh = CV.debounce(() => {
+        const Q = num(form.elements.flow_m3h ? form.elements.flow_m3h.value : "");
+        const H = num(form.elements.head_m   ? form.elements.head_m.value   : "");
+        if (!(Q > 0 && H > 0)) {
+          box.innerHTML =
+            `<div class="text-muted small">Enter Q and Head to see matches.</div>`;
+          return;
+        }
+        CV.suggestPumps(Q, H, box);
+      }, 350);
+      form.addEventListener("input",  refresh);
+      form.addEventListener("change", refresh);
+      refresh();
+    }
+  }
+})();
+</script>
+{% endblock %}

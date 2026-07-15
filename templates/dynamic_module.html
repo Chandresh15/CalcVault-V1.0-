@@ -1,0 +1,193 @@
+{# ============================================================
+   templates/dynamic_module.html — CalcVault (Ramboll Edition)
+   Renders any Owner-built custom module.
+   Uses /api/module-preview for live evaluation (same eval path
+   as save-time, so preview never diverges from real results).
+   ============================================================ #}
+{% extends "base.html" %}
+{% block title %}{{ module.name }}{% endblock %}
+{% block page_title %}{{ module.icon }} {{ module.name }}{% endblock %}
+
+{% block content %}
+
+{% if module.description %}
+  <p class="text-muted small mb-2" style="max-width:70ch;">
+    {{ module.description }}
+  </p>
+{% endif %}
+
+<div class="calc-layout">
+
+  {# ============ LEFT — inputs ============ #}
+  <div>
+
+    {# Formula list (all outputs) shown as a reference block #}
+    <div class="card mb-2">
+      <div class="card-title"><span class="ic">Σ</span> Formulas</div>
+      {% for o in module.outputs %}
+        <div class="formula-box mb-1">
+          <b>{{ o.var }}</b> = {{ o.formula | replace('*','·') }}
+          <span class="text-muted small">→ {{ o.label }} ({{ o.unit or '—' }})</span>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if error %}
+      <div class="flash flash-error mb-2">⚠️ <span>{{ error }}</span></div>
+    {% endif %}
+
+    <form method="post" id="calcForm" data-enter-advance>
+      <div class="card">
+        <div class="card-title"><span class="ic">✏️</span> Inputs</div>
+        {% for i in module.inputs %}
+          <div class="field">
+            <label for="f_{{ i.var }}">
+              {{ i.label }}
+              {% if i.unit %}<span class="hint">({{ i.unit }})</span>{% endif %}
+            </label>
+            <input class="input" type="number" step="any"
+                   inputmode="decimal"
+                   id="f_{{ i.var }}"
+                   name="{{ i.var }}"
+                   placeholder="{{ i.default }}"
+                   value="{{ values[i.var] }}"
+                   data-test-var="{{ i.var }}"
+                   required>
+            {% if i.note %}
+              <span class="hint">ℹ️ {{ i.note }}</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+
+        <div class="hstack wrap mt-1" style="gap:.5rem;">
+          <button class="btn" type="submit">Calculate</button>
+          <a class="btn btn-ghost"
+             href="{{ url_for('custom_module_view', slug=module.slug) }}">Reset</a>
+          <span class="spacer"></span>
+          <span class="chip">v{{ module.version }} · {{ module.category }}</span>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {# ============ RIGHT — live preview + verified result ============ #}
+  <div>
+    <div class="card sticky-preview mb-2">
+      <div class="card-title"><span class="ic">⚡</span> Live preview</div>
+      <div id="livePreview">
+        <div class="text-muted small">Type values to see live results.</div>
+      </div>
+    </div>
+
+    {% if result and result.results %}
+      <div class="result-card">
+        {% if result.primary_var and result.results[result.primary_var] is not none %}
+          {% set pspec = (module.outputs | selectattr('var','equalto', result.primary_var) | list)[0] %}
+          <div class="result-primary">
+            {{ '%g' % result.results[result.primary_var] }}
+            <small>{{ pspec.unit }}</small>
+          </div>
+          <div class="text-muted small mb-1">{{ pspec.label }}</div>
+        {% endif %}
+
+        <dl class="result-grid">
+          {% for o in module.outputs %}
+            {% if o.var != result.primary_var %}
+              <dt>{{ o.label }}</dt>
+              <dd>
+                {% if result.errors and result.errors.get(o.var) %}
+                  <span style="color:var(--error);">
+                    ⚠ {{ result.errors[o.var] }}
+                  </span>
+                {% elif result.results.get(o.var) is not none %}
+                  {{ '%g' % result.results[o.var] }}
+                  <span class="text-muted small">{{ o.unit }}</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </dd>
+            {% endif %}
+          {% endfor %}
+        </dl>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+
+
+{# ---- Live preview via /api/module-preview ---- #}
+<script id="modInputs" type="application/json">
+  {{ module.inputs | tojson }}
+</script>
+<script id="modOutputs" type="application/json">
+  {{ module.outputs | tojson }}
+</script>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+(function () {
+  const form   = document.getElementById("calcForm");
+  const target = document.getElementById("livePreview");
+  if (!form || !target || !window.CV) return;
+
+  const inputs  = JSON.parse(document.getElementById("modInputs").textContent);
+  const outputs = JSON.parse(document.getElementById("modOutputs").textContent);
+  const primary = (outputs.find(o => o.primary) || outputs[0] || {}).var;
+
+  const preview = CV.debounce(async () => {
+    const values = {};
+    inputs.forEach(i => {
+      const el = form.elements[i.var];
+      values[i.var] = el ? el.value : "";
+    });
+    try {
+      const r = await fetch("/api/module-preview", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inputs, outputs, values }),
+      });
+      const j = await r.json();
+      if (j.error) {
+        target.innerHTML =
+          `<div class="text-muted small">${j.error}</div>`;
+        return;
+      }
+      const html = [];
+      const primaryVal = j.results[primary];
+      if (primary && primaryVal !== null && primaryVal !== undefined) {
+        const punit = (outputs.find(o => o.var === primary) || {}).unit || "";
+        html.push(`<div class="result-primary">${primaryVal}
+                   <small>${punit}</small></div>`);
+      }
+      html.push(`<dl class="result-grid">`);
+      outputs.forEach(o => {
+        if (o.var === primary) return;
+        const err = j.errors && j.errors[o.var];
+        const val = j.results[o.var];
+        html.push(`<dt>${o.label}</dt>
+          <dd>${
+            err ? `<span style="color:var(--error);">${err}</span>`
+                : (val !== null && val !== undefined
+                    ? `${val} <span class="text-muted small">${o.unit || ""}</span>`
+                    : `<span class="text-muted">—</span>`)
+          }</dd>`);
+      });
+      html.push(`</dl>`);
+      target.innerHTML = html.join("");
+    } catch (_) {
+      target.innerHTML =
+        `<div class="text-muted small">Preview unavailable.</div>`;
+    }
+  }, 200);
+
+  form.addEventListener("input",  preview);
+  form.addEventListener("change", preview);
+  preview();
+})();
+</script>
+{% endblock %}

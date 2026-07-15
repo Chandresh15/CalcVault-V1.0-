@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+{% block page_title %}📚 History{% endblock %}
+
+{% block content %}
+<section class="between wrap mb-2" style="gap:.5rem;">
+  <div>
+    <h1 style="margin:.1rem 0;">My Calculations</h1>
+    <p class="text-muted small" style="margin:0;">
+      Ctrl-click 2–4 rows to enable Compare. Click 👁️ for full details.
+    </p>
+  </div>
+  <div class="hstack wrap" style="gap:.5rem;">
+    <input class="input" id="histFilter" placeholder="🔍 Filter by module / status…"
+           style="max-width:280px;">
+    <button class="btn btn-soft" id="compareBtn" disabled>⚖ Compare (0)</button>
+    <a class="btn btn-soft" href="{{ url_for('export_history') }}">📊 Export xlsx</a>
+    <form method="post" action="{{ url_for('history_delete_all') }}"
+          data-confirm="i18n:confirm.deleteall" style="margin:0;">
+      <button class="btn btn-danger" type="submit">🗑️ Delete All History</button>
+    </form>
+  </div>
+</section>
+
+<div class="card">
+  <div class="scroll-x">
+    <table class="data" id="historyTable">
+      <thead>
+        <tr>
+          <th style="width:1%;">#</th>
+          <th>When</th>
+          {% if current_user.role == 'owner' %}<th>User</th>{% endif %}
+          <th>Module</th>
+          <th>Status</th>
+          <th>Report ID</th>
+          <th class="text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr id="calc-{{ r.id }}" data-id="{{ r.id }}"
+              data-search="{{ (r.module_name ~ ' ' ~ r.status ~ ' ' ~ r.user)|lower }}">
+            <td class="text-muted small">{{ r.id }}</td>
+            <td class="nowrap small">{{ r.created_at[:16].replace('T',' ') }}</td>
+            {% if current_user.role == 'owner' %}<td>{{ r.user }}</td>{% endif %}
+            <td>{{ r.module_icon }} {{ r.module_name }}</td>
+            <td><span class="pill pill-{{ r.status }}">{{ r.status }}</span></td>
+            <td class="text-mono small text-muted">{{ r.report_id or '—' }}</td>
+            <td class="text-right">
+              <div class="row-actions" style="justify-content:flex-end;">
+                <button class="btn btn-ghost btn-sm" data-view-id="{{ r.id }}"
+                        title="View details">👁️</button>
+                <a class="btn btn-ghost btn-sm"
+                   href="{{ url_for('history_pdf', calc_id=r.id) }}"
+                   title="Download PDF">📄</a>
+                {% if r.status == 'draft' %}
+                  <form method="post" style="margin:0;"
+                        action="{{ url_for('history_submit', calc_id=r.id) }}">
+                    <button class="btn btn-soft btn-sm" type="submit"
+                            title="Submit for approval">📤</button>
+                  </form>
+                {% elif r.status == 'pending' %}
+                  <form method="post" style="margin:0;"
+                        action="{{ url_for('history_cancel', calc_id=r.id) }}"
+                        data-confirm="i18n:confirm.cancel">
+                    <button class="btn btn-warn btn-sm" type="submit"
+                            title="Cancel approval">🚫</button>
+                  </form>
+                {% endif %}
+                <form method="post" style="margin:0;"
+                      action="{{ url_for('history_delete', calc_id=r.id) }}"
+                      data-confirm="i18n:confirm.delete">
+                  <button class="btn btn-danger btn-sm" type="submit"
+                          title="Delete">🗑️</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="text-center text-muted">
+            No calculations yet. Open any module from the sidebar to get started.
+          </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  tr.selected td { background: var(--accent-soft) !important; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const filter = document.getElementById("histFilter");
+  if (filter) filter.addEventListener("input", (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll("#historyTable tbody tr[data-search]").forEach(tr => {
+      tr.style.display = (!q || tr.dataset.search.includes(q)) ? "" : "none";
+    });
+  });
+</script>
+{% endblock %}

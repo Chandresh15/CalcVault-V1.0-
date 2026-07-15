@@ -1,0 +1,370 @@
+{# ============================================================
+   templates/total_pump_head.html — CalcVault (Ramboll Edition)
+   Module 11 — Total Discharge / Pump Head
+   Includes:  fittings picker, sticky live-summary, pump suggestion side panel
+   ============================================================ #}
+{% extends "base.html" %}
+{% block title %}Total Discharge Head{% endblock %}
+{% block page_title %}💧 Total Discharge / Pump Head{% endblock %}
+
+{% block content %}
+
+<div class="formula-box mb-2">
+  TDH = H<sub>static</sub> + H<sub>friction</sub> +
+  H<sub>station</sub> + H<sub>residual</sub>
+</div>
+
+{% if error %}
+  <div class="flash flash-error mb-2">⚠️ <span>{{ error }}</span></div>
+{% endif %}
+
+<div class="calc-layout">
+
+  {# ============ LEFT — inputs ============ #}
+  <div>
+    <form method="post" id="tphForm" data-enter-advance>
+      <div class="card">
+        <div class="card-title"><span class="ic">🚰</span> Pipe & flow</div>
+
+        <div class="grid grid-2">
+          <div class="field">
+            <label>Flow Q <span class="hint">(m³/hr)</span></label>
+            <input class="input" name="flow_m3h" type="number" step="any"
+                   value="{{ values.flow_m3h }}" required>
+          </div>
+          <div class="field">
+            <label>Pipe ID <span class="hint">(mm)</span></label>
+            <input class="input" name="pipe_id_mm" type="number" step="any"
+                   value="{{ values.pipe_id_mm }}" required>
+          </div>
+          <div class="field">
+            <label>Length <span class="hint">(m)</span></label>
+            <input class="input" name="length_m" type="number" step="any"
+                   value="{{ values.length_m }}" required>
+          </div>
+          <div class="field">
+            <label>Hazen-Williams C <span class="hint">(—)</span></label>
+            <input class="input" name="c_factor" type="number" step="any"
+                   value="{{ values.c_factor }}" required>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-2">
+        <div class="card-title"><span class="ic">⬆️</span> Head components</div>
+        <div class="grid grid-2">
+          <div class="field">
+            <label>Static head <span class="hint">(m)</span></label>
+            <input class="input" name="static_head_m" type="number" step="any"
+                   value="{{ values.static_head_m }}" required>
+          </div>
+          <div class="field">
+            <label>Residual head <span class="hint">(m)</span></label>
+            <input class="input" name="residual_head_m" type="number" step="any"
+                   value="{{ values.residual_head_m }}" required>
+          </div>
+        </div>
+      </div>
+
+      {# ---- Fittings table ---- #}
+      <div class="card mt-2">
+        <div class="between mb-1">
+          <div class="card-title" style="margin:0;">
+            <span class="ic">🔧</span> Fittings & minor losses (CPHEEO)
+          </div>
+          <button class="btn btn-soft btn-sm" type="button" id="addFitting">
+            + Add fitting
+          </button>
+        </div>
+
+        <div class="scroll-x">
+          <table class="data fittings-table" id="fittingsTable">
+            <thead>
+              <tr>
+                <th style="width:60%;">Fitting</th>
+                <th class="text-right">K</th>
+                <th class="text-right" style="width:80px;">Qty</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if selected_fittings %}
+                {% for f in selected_fittings %}
+                  <tr>
+                    <td>
+                      <select name="fitting_key" class="fitting-sel">
+                        {% for lib in fittings_library %}
+                          <option value="{{ lib.key }}" data-k="{{ lib.k }}"
+                            {% if lib.key == f.key %}selected{% endif %}>
+                            {{ lib.name }}
+                          </option>
+                        {% endfor %}
+                      </select>
+                    </td>
+                    <td class="text-right text-mono fitting-k">{{ f.k }}</td>
+                    <td class="text-right">
+                      <input class="input" type="number" min="1" step="1"
+                             name="fitting_qty" value="{{ f.qty }}">
+                    </td>
+                    <td class="text-right">
+                      <button class="btn btn-ghost btn-sm" type="button"
+                              data-remove-row>✕</button>
+                    </td>
+                  </tr>
+                {% endfor %}
+              {% endif %}
+              {# Row template (kept hidden, cloned by JS) #}
+              <tr data-template class="hidden">
+                <td>
+                  <select name="fitting_key" class="fitting-sel">
+                    {% for lib in fittings_library %}
+                      <option value="{{ lib.key }}" data-k="{{ lib.k }}">
+                        {{ lib.name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td class="text-right text-mono fitting-k">
+                  {{ fittings_library[0].k }}
+                </td>
+                <td class="text-right">
+                  <input class="input" type="number" min="1" step="1"
+                         name="fitting_qty" value="1">
+                </td>
+                <td class="text-right">
+                  <button class="btn btn-ghost btn-sm" type="button"
+                          data-remove-row>✕</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-muted small mt-1" style="margin:.5rem 0 0;">
+          Add each fitting present in the line — quantity multiplies its K.
+          Values follow CPHEEO Manual on Water Supply and Treatment.
+        </p>
+      </div>
+
+      {# ---- C-factor reference ---- #}
+      <details class="ref mt-2">
+        <summary>Hazen-Williams C-factor reference</summary>
+        <table>
+          <thead><tr><th>Material</th><th class="text-right">C</th><th></th></tr></thead>
+          <tbody>
+            {% for row in hazen_c_table %}
+              <tr>
+                <td>{{ row.material }}</td>
+                <td class="text-right text-mono">{{ row.c }}</td>
+                <td class="text-right">
+                  <button type="button" class="btn btn-soft use"
+                          data-use='{"c_factor": {{ row.c }} }'
+                          data-use-title="C-factor applied">Use</button>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+
+      <div class="hstack wrap mt-2" style="gap:.5rem;">
+        <button class="btn" type="submit">Calculate TDH</button>
+        <a class="btn btn-ghost" href="{{ url_for('total_pump_head') }}">Reset</a>
+      </div>
+    </form>
+  </div>
+
+  {# ============ RIGHT — sticky summary + verified result + pumps ============ #}
+  <div>
+
+    <div class="card sticky-preview mb-2">
+      <div class="card-title"><span class="ic">⚡</span> Live TDH summary</div>
+      <div id="tphPreview">
+        <div class="text-muted small">
+          Fill flow, pipe & head fields to see the estimate.
+        </div>
+      </div>
+    </div>
+
+    {% if result %}
+      <div class="result-card mb-2">
+        <div class="result-primary">
+          {{ '%g' % result.total_head_m }} <small>m TDH</small>
+        </div>
+        <div class="text-muted small mb-1">Total Discharge Head</div>
+        <dl class="result-grid">
+          <dt>Static head</dt>    <dd>{{ '%g' % result.static_head_m }} <span class="text-muted small">m</span></dd>
+          <dt>Friction (pipe)</dt><dd>{{ '%g' % result.friction_head_m }} <span class="text-muted small">m</span></dd>
+          <dt>Minor (fittings)</dt><dd>{{ '%g' % result.minor_head_m }} <span class="text-muted small">m</span></dd>
+          <dt>Residual head</dt>  <dd>{{ '%g' % result.residual_head_m }} <span class="text-muted small">m</span></dd>
+          <dt>Velocity in pipe</dt><dd>{{ '%g' % result.velocity_ms }} <span class="text-muted small">m/s</span></dd>
+        </dl>
+
+        {% if result.fittings %}
+          <details class="ref mt-2">
+            <summary>Fitting breakdown ({{ result.fittings|length }})</summary>
+            <table>
+              <thead><tr><th>Fitting</th><th class="text-right">K</th>
+                         <th class="text-right">Qty</th>
+                         <th class="text-right">Loss (m)</th></tr></thead>
+              <tbody>
+                {% for f in result.fittings %}
+                  <tr>
+                    <td>{{ f.name }}</td>
+                    <td class="text-right text-mono">{{ f.k }}</td>
+                    <td class="text-right">{{ f.qty }}</td>
+                    <td class="text-right text-mono">{{ f.loss_m }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </details>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {# ---- Pump databank suggestion side panel ---- #}
+    <div class="card">
+      <div class="card-title"><span class="ic">⚙️</span> Reference pumps</div>
+      <div class="text-muted small mb-1">
+        Matches within ±25% of current duty point.
+      </div>
+      <div id="pumpSuggest">
+        <div class="text-muted small">Enter Q & TDH to see suggestions.</div>
+      </div>
+      <div class="hstack mt-1">
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('pumps_list') }}">
+          Open Pump Databank →
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+{# ---- Data for the client-side helper ---- #}
+<script id="fittingsLib" type="application/json">
+  {{ fittings_library | tojson }}
+</script>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+(function () {
+  const form   = document.getElementById("tphForm");
+  const target = document.getElementById("tphPreview");
+  const table  = document.getElementById("fittingsTable");
+  if (!form || !table || !window.CV) return;
+
+  const PI = Math.PI, G = 9.81;
+  const num = (v) => { const x = parseFloat(v); return isFinite(x) ? x : NaN; };
+
+  // -------- Fittings row management --------
+  document.getElementById("addFitting").addEventListener("click", () => {
+    const tpl = table.querySelector("tr[data-template]");
+    if (!tpl) return;
+    const row = tpl.cloneNode(true);
+    row.removeAttribute("data-template");
+    row.classList.remove("hidden");
+    tpl.parentNode.insertBefore(row, tpl);
+    row.querySelector("select").focus();
+    livePreview();
+  });
+
+  table.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-remove-row]");
+    if (!btn) return;
+    btn.closest("tr").remove();
+    livePreview();
+  });
+
+  // Keep the visible K cell in sync with the selected option
+  table.addEventListener("change", (e) => {
+    if (!e.target.classList.contains("fitting-sel")) return;
+    const opt = e.target.selectedOptions[0];
+    const tr  = e.target.closest("tr");
+    tr.querySelector(".fitting-k").textContent = opt.dataset.k;
+    livePreview();
+  });
+
+  // -------- Compute + render --------
+  function readFittings() {
+    const rows = table.querySelectorAll("tbody tr:not([data-template])");
+    const out = [];
+    rows.forEach(tr => {
+      const sel  = tr.querySelector(".fitting-sel");
+      const qty  = tr.querySelector("input[name=fitting_qty]");
+      if (!sel || !qty) return;
+      const opt = sel.selectedOptions[0];
+      const q   = parseInt(qty.value, 10);
+      if (!opt || !(q > 0)) return;
+      out.push({ name: opt.textContent.trim(),
+                 k: parseFloat(opt.dataset.k),
+                 qty: q });
+    });
+    return out;
+  }
+
+  function compute() {
+    const Q  = num(form.elements.flow_m3h.value);
+    const d  = num(form.elements.pipe_id_mm.value) / 1000;
+    const L  = num(form.elements.length_m.value);
+    const C  = num(form.elements.c_factor.value);
+    const Hs = num(form.elements.static_head_m.value);
+    const Hr = num(form.elements.residual_head_m.value);
+    if (!(Q>0 && d>0 && L>0 && C>0 && Hs>=0 && Hr>=0)) return null;
+
+    const A  = PI*d*d/4, V = (Q/3600)/A;
+    const j  = Math.pow(Q/(1000.8*C*Math.pow(d,2.63)), 1.852);
+    const Hf = j*L;
+
+    let sumK = 0;
+    const breakdown = readFittings().map(f => {
+      sumK += f.k * f.qty;
+      return { ...f, loss: f.k * f.qty * V*V / (2*G) };
+    });
+    const Hm  = sumK * V*V / (2*G);
+    const TDH = Hs + Hf + Hm + Hr;
+    return { Q, V, Hf, Hm, TDH, breakdown };
+  }
+
+  const livePreview = CV.debounce(() => {
+    const r = compute();
+    if (!r) {
+      target.innerHTML =
+        `<div class="text-muted small">Fill all fields to see the estimate.</div>`;
+      updatePumpSuggest(null, null);
+      return;
+    }
+    target.innerHTML = `
+      <div class="result-primary">${r.TDH.toFixed(3)} <small>m TDH</small></div>
+      <div class="text-muted small mb-1">Total Discharge Head (live)</div>
+      <dl class="result-grid">
+        <dt>Static</dt>    <dd>${(+form.elements.static_head_m.value || 0).toFixed(3)} m</dd>
+        <dt>Friction</dt>  <dd>${r.Hf.toFixed(4)} m</dd>
+        <dt>Minor</dt>     <dd>${r.Hm.toFixed(4)} m</dd>
+        <dt>Residual</dt>  <dd>${(+form.elements.residual_head_m.value || 0).toFixed(3)} m</dd>
+        <dt>Velocity</dt>  <dd>${r.V.toFixed(3)} m/s</dd>
+      </dl>`;
+    updatePumpSuggest(r.Q, r.TDH);
+  }, 180);
+
+  form.addEventListener("input",  livePreview);
+  form.addEventListener("change", livePreview);
+  livePreview();
+
+  // -------- Pump suggestion panel --------
+  const pumpBox = document.getElementById("pumpSuggest");
+  const suggest = CV.debounce((Q, H) => CV.suggestPumps(Q, H, pumpBox), 350);
+  function updatePumpSuggest(Q, H) {
+    if (!Q || !H) {
+      pumpBox.innerHTML =
+        `<div class="text-muted small">Enter Q & TDH to see suggestions.</div>`;
+      return;
+    }
+    suggest(Q, H);
+  }
+})();
+</script>
+{% endblock %}

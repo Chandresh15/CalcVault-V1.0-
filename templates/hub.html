@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Module Hub{% endblock %}
+{% block page_title %}🧩 Module Hub{% endblock %}
+
+{% block content %}
+<div class="builder-tabs">
+  <button class="active" data-tab="installed"
+          onclick="CV.builder.switchTab('installed')">📦 Installed</button>
+  <button data-tab="marketplace"
+          onclick="CV.builder.switchTab('marketplace')">🛒 Marketplace</button>
+  <button data-tab="build"
+          onclick="CV.builder.switchTab('build')">🛠️ Build New</button>
+</div>
+
+{# ---------- Installed ---------- #}
+<div data-tab-panel="installed">
+  <div class="between mb-1">
+    <p class="text-muted small" style="margin:0;">
+      {{ installed|length }} custom module(s) installed.
+    </p>
+    <form method="post" action="{{ url_for('hub_clean') }}"
+          data-confirm="Remove exact-duplicate modules?" style="margin:0;">
+      <button class="btn btn-soft btn-sm" type="submit">🧹 Clean Duplicates</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <table class="data">
+      <thead>
+        <tr><th>Name</th><th>Category</th><th>Status</th><th>Version</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for m in installed %}
+          <tr>
+            <td>{{ m.icon }} <b>{{ m.name }}</b>
+              <div class="text-muted small">{{ m.description|truncate(70) }}</div>
+            </td>
+            <td>{{ m.category }}</td>
+            <td>
+              <form method="post" style="margin:0;"
+                    action="{{ url_for('builder_status', module_id=m.id) }}">
+                <select name="status" onchange="this.form.submit()"
+                        style="padding:.3rem .5rem;">
+                  <option value="active"      {% if m.status=='active'%}selected{% endif %}>active</option>
+                  <option value="maintenance" {% if m.status=='maintenance'%}selected{% endif %}>maintenance</option>
+                  <option value="disabled"    {% if m.status=='disabled'%}selected{% endif %}>disabled</option>
+                </select>
+              </form>
+            </td>
+            <td class="text-muted small">v{{ m.version }}</td>
+            <td class="text-right">
+              <div class="row-actions" style="justify-content:flex-end;">
+                <a class="btn btn-soft btn-sm"
+                   href="{{ url_for('custom_module_view', slug=m.slug) }}">Open</a>
+                <a class="btn btn-ghost btn-sm"
+                   href="{{ url_for('builder_edit', module_id=m.id) }}">✏️ Edit</a>
+                <a class="btn btn-ghost btn-sm"
+                   href="{{ url_for('builder_export', module_id=m.id) }}">⬇ JSON</a>
+                <form method="post" style="margin:0;"
+                      action="{{ url_for('builder_uninstall', module_id=m.id) }}"
+                      data-confirm="Uninstall '{{ m.name }}' permanently?">
+                  <button class="btn btn-danger btn-sm" type="submit">🗑️</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="text-center text-muted">
+            No custom modules yet. Use <b>Build New</b> to create one.
+          </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ---------- Marketplace (built-in hydraulic modules) ---------- #}
+<div data-tab-panel="marketplace" class="hidden">
+  <p class="text-muted small mb-1">
+    Built-in hydraulic modules ship with CalcVault and are always available
+    to every user.
+  </p>
+  <div class="grid grid-3">
+    {% for cfg in hydraulic %}
+      <div class="card">
+        <b>{{ cfg.icon }} {{ cfg.name }}</b>
+        <div class="text-muted small">{{ cfg.category }} · Module {{ cfg.id }}</div>
+        <div class="formula-box mt-1" style="font-size:.78rem;">{{ cfg.formula }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="card mt-2">
+    <div class="card-title"><span class="ic">⬆</span> Import module (JSON)</div>
+    <form method="post" action="{{ url_for('builder_import') }}"
+          enctype="multipart/form-data" class="hstack" style="gap:.5rem;">
+      <input class="input" type="file" name="file" accept="application/json" required>
+      <button class="btn" type="submit">Import</button>
+    </form>
+  </div>
+</div>
+
+{# ---------- Build New (link into builder) ---------- #}
+<div data-tab-panel="build" class="hidden">
+  <div class="card text-center" style="padding:2rem;">
+    <div style="font-size:2.4rem;">🛠️</div>
+    <h2 style="margin:.5rem 0;">Build a new module</h2>
+    <p class="text-muted">Excel-style grids, safe formula evaluator, version history.</p>
+    <a class="btn" href="{{ url_for('builder_edit') }}">Open Module Builder →</a>
+  </div>
+</div>
+{% endblock %}

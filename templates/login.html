@@ -1,0 +1,56 @@
+{# ============================================================
+   templates/login.html — CalcVault (Ramboll Edition)
+   Standalone shell (extends base but skips the app chrome).
+   ============================================================ #}
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+
+{% block anon_content %}
+<div class="login-shell">
+  <div class="login-card">
+    <div class="brand-mark">R</div>
+    <h2 style="margin-bottom:.25rem;">Welcome back</h2>
+    <p class="text-muted small mb-2">
+      Sign in to <b style="color:var(--brand-blue);">Ramboll CalcVault</b>
+    </p>
+
+    {% if error %}
+      <div class="flash flash-error mb-2">⛔ <span>{{ error }}</span></div>
+    {% endif %}
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% if msgs %}
+        <div class="flashes mb-2">
+          {% for cat, msg in msgs %}
+            <div class="flash flash-{{ cat if cat in ['ok','warn','error','info'] else 'info' }}">
+              <span>{{ msg }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="post"
+          action="{{ url_for('login_view') }}{% if request.args.get('next') %}?next={{ request.args.get('next') }}{% endif %}"
+          data-enter-advance>
+      <div class="field">
+        <label for="loginUser">Username</label>
+        <input class="input" id="loginUser" name="username"
+               autocomplete="username" autofocus required
+               value="{{ request.form.username or '' }}">
+      </div>
+      <div class="field">
+        <label for="loginPass">Password</label>
+        <input class="input" id="loginPass" name="password"
+               type="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn" type="submit" style="width:100%;">Sign in →</button>
+    </form>
+
+    <div class="text-center text-muted small mt-2">
+      Local network only · No cloud, no external accounts.<br>
+      First run? Default owner is <kbd>owner</kbd> / <kbd>owner</kbd>.
+    </div>
+  </div>
+</div>
+{% endblock %}

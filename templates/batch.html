@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Batch Import{% endblock %}
+{% block page_title %}📥 Batch Import{% endblock %}
+
+{% block content %}
+<p class="text-muted small mb-2" style="max-width:70ch;">
+  Upload an Excel (<code>.xlsx</code>) or CSV file with one row per calculation.
+  Column names are matched case-insensitively. Download a blank template
+  first to see the exact columns expected for the chosen module.
+</p>
+
+<div class="grid" style="grid-template-columns: 1fr 340px; gap:1.25rem;">
+
+  <div class="card">
+    <div class="card-title"><span class="ic">📤</span> Upload & run</div>
+    <form method="post" enctype="multipart/form-data" data-enter-advance>
+      <div class="field">
+        <label>Module</label>
+        <select class="input" name="module_slug" id="batchSlug" required>
+          {% for slug, spec in modules.items() %}
+            <option value="{{ slug }}">{{ spec.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Input file</label>
+        <input class="input" type="file" name="file" required
+               accept=".xlsx,.csv,.xlsm">
+      </div>
+      <div class="hstack wrap" style="gap:.5rem;">
+        <button class="btn" type="submit">▶ Run batch</button>
+        <a class="btn btn-soft" id="tplBtn"
+           href="{{ url_for('batch_template', slug=(modules|list)[0]) }}">
+          📄 Download blank template
+        </a>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="ic">ℹ️</span> Column reference</div>
+    <div id="colRef" class="small"></div>
+  </div>
+</div>
+
+<script id="modSpecs" type="application/json">
+  {{ modules | tojson }}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const specs = JSON.parse(document.getElementById("modSpecs").textContent);
+  const sel   = document.getElementById("batchSlug");
+  const tpl   = document.getElementById("tplBtn");
+  const ref   = document.getElementById("colRef");
+
+  function refresh() {
+    const slug = sel.value;
+    const spec = specs[slug];
+    if (!spec) return;
+    tpl.href = "/batch/template/" + slug;
+    ref.innerHTML = `<b>${spec.label}</b><br><br>` +
+      "<table class='data'><thead><tr><th>Column</th><th>Aliases</th><th>Unit</th></tr></thead><tbody>" +
+      spec.inputs.map(i =>
+        `<tr><td><b>${i.key}</b></td>
+             <td class="text-muted small">${i.aliases.join(", ")}</td>
+             <td>${i.unit}</td></tr>`).join("") +
+      "</tbody></table>";
+  }
+  sel.addEventListener("change", refresh);
+  refresh();
+})();
+</script>
+{% endblock %}

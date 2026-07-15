@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Pump Databank{% endblock %}
+{% block page_title %}⚙️ Pump Databank{% endblock %}
+
+{% block content %}
+<section class="between wrap mb-2" style="gap:.5rem;">
+  <form method="get" class="hstack" style="gap:.5rem;">
+    <input class="input" name="q" value="{{ q }}"
+           placeholder="🔍 Search vendor / model / notes"
+           style="min-width:280px;">
+    <button class="btn btn-soft" type="submit">Search</button>
+    {% if q %}<a class="btn btn-ghost" href="{{ url_for('pumps_list') }}">Clear</a>{% endif %}
+  </form>
+  <div class="hstack wrap" style="gap:.5rem;">
+    {% if is_owner(current_user) %}
+      <button class="btn" onclick="openPumpForm()">➕ Add pump</button>
+      <a class="btn btn-soft" href="{{ url_for('export_pumps') }}">📊 Export xlsx</a>
+    {% endif %}
+  </div>
+</section>
+
+<div class="card">
+  <div class="scroll-x">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Vendor</th><th>Model</th>
+          <th class="text-right">Q (m³/h)</th>
+          <th class="text-right">H (m)</th>
+          <th class="text-right">η<sub>p</sub></th>
+          <th class="text-right">η<sub>m</sub></th>
+          <th class="text-right">kW</th>
+          <th>Notes</th>
+          <th>PDF</th>
+          {% if is_owner(current_user) %}<th></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pumps %}
+          <tr>
+            <td><b>{{ p.vendor }}</b></td>
+            <td>{{ p.model }}</td>
+            <td class="text-right text-mono">{{ p.flow_m3h }}</td>
+            <td class="text-right text-mono">{{ p.head_m }}</td>
+            <td class="text-right text-mono">{{ p.pump_eff_pct }}%</td>
+            <td class="text-right text-mono">{{ p.motor_eff_pct }}%</td>
+            <td class="text-right text-mono">{{ p.motor_kw }}</td>
+            <td class="small text-muted">{{ p.notes }}</td>
+            <td>
+              {% if p.pdf_filename %}
+                <a class="btn btn-ghost btn-sm"
+                   href="{{ url_for('pumps_pdf', pid=p.id) }}">📄</a>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </td>
+            {% if is_owner(current_user) %}
+              <td class="text-right">
+                <div class="row-actions" style="justify-content:flex-end;">
+                  <button class="btn btn-ghost btn-sm"
+                          onclick='openPumpForm({{ p | tojson }})'>✏️</button>
+                  <form method="post" style="margin:0;"
+                        action="{{ url_for('pumps_delete', pid=p.id) }}"
+                        data-confirm="Delete pump '{{ p.vendor }} {{ p.model }}'?">
+                    <button class="btn btn-danger btn-sm" type="submit">🗑️</button>
+                  </form>
+                </div>
+              </td>
+            {% endif %}
+          </tr>
+        {% else %}
+          <tr><td colspan="10" class="text-center text-muted">
+            No pumps in the databank yet.
+          </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if is_owner(current_user) %}
+<script>
+function openPumpForm(p) {
+  p = p || {};
+  const body = `
+    <form method="post" action="{{ url_for('pumps_save') }}"
+          enctype="multipart/form-data" data-enter-advance>
+      <input type="hidden" name="id" value="${p.id || ''}">
+      <div class="grid grid-2">
+        <div class="field"><label>Vendor</label>
+          <input class="input" name="vendor" value="${p.vendor || ''}"></div>
+        <div class="field"><label>Model</label>
+          <input class="input" name="model" value="${p.model || ''}"></div>
+        <div class="field"><label>Flow (m³/hr)</label>
+          <input class="input" name="flow_m3h" type="number" step="any"
+                 value="${p.flow_m3h || 0}"></div>
+        <div class="field"><label>Head (m)</label>
+          <input class="input" name="head_m" type="number" step="any"
+                 value="${p.head_m || 0}"></div>
+        <div class="field"><label>Pump efficiency (%)</label>
+          <input class="input" name="pump_eff_pct" type="number" step="any"
+                 value="${p.pump_eff_pct || 0}"></div>
+        <div class="field"><label>Motor efficiency (%)</label>
+          <input class="input" name="motor_eff_pct" type="number" step="any"
+                 value="${p.motor_eff_pct || 0}"></div>
+        <div class="field"><label>Motor rating (kW)</label>
+          <input class="input" name="motor_kw" type="number" step="any"
+                 value="${p.motor_kw || 0}"></div>
+        <div class="field"><label>Pump weight (kg)</label>
+          <input class="input" name="pump_weight_kg" type="number" step="any"
+                 value="${p.pump_weight_kg || 0}"></div>
+        <div class="field"><label>Motor weight (kg)</label>
+          <input class="input" name="motor_weight_kg" type="number" step="any"
+                 value="${p.motor_weight_kg || 0}"></div>
+      </div>
+      <div class="field"><label>Notes</label>
+        <textarea name="notes">${p.notes || ''}</textarea></div>
+      <div class="field"><label>Technical offer PDF</label>
+        <input class="input" name="pdf" type="file" accept="application/pdf"></div>
+      ${p.pdf_filename ? `
+        <label class="hstack small text-muted" style="gap:.4rem;">
+          <input type="checkbox" name="remove_pdf" value="1">
+          Remove existing PDF (${p.pdf_original || p.pdf_filename})
+        </label>` : ''}
+      <div class="hstack mt-2" style="gap:.5rem;justify-content:flex-end;">
+        <button class="btn btn-ghost" type="button" data-close>Cancel</button>
+        <button class="btn" type="submit">Save pump</button>
+      </div>
+    </form>`;
+  CV.openModal(p.id ? `✏️ Edit pump #${p.id}` : "➕ New pump", body, "");
+}
+</script>
+{% endif %}
+{% endblock %}

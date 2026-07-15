@@ -1,0 +1,262 @@
+{# ============================================================
+   templates/base.html — CalcVault (Premium + Collapsible)
+   ============================================================ #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CalcVault{% endblock %} — Ramboll</title>
+
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("cv.theme")    || "light";
+        var a = localStorage.getItem("cv.accent")   || "rose";
+        var l = localStorage.getItem("cv.lang")     || "en";
+        var s = localStorage.getItem("cv.sidebar")  || "expanded";
+        var root = document.documentElement;
+        root.setAttribute("data-theme",   t);
+        root.setAttribute("data-accent",  a);
+        root.setAttribute("data-sidebar", s);
+        root.setAttribute("lang",         l);
+      } catch (_) {}
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://rsms.me/">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,
+    <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>
+      <rect width='32' height='32' rx='9' fill='%23E4002B'/>
+      <text x='16' y='22' text-anchor='middle' fill='white'
+            font-family='Inter,Arial' font-weight='700' font-size='18'
+            letter-spacing='-0.03em'>R</text>
+    </svg>">
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+
+{% if current_user %}
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">R</div>
+      <div class="brand-txt">
+        <b>RAMBOLL</b><span>CalcVault</span>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <a href="{{ url_for('dashboard') }}" title="Dashboard"
+         class="{% if request.endpoint == 'dashboard' %}active{% endif %}">
+        <span class="nav-ic">🏠</span><span data-i18n="nav.dashboard">Dashboard</span>
+      </a>
+      <a href="{{ url_for('history') }}" title="History"
+         class="{% if request.endpoint == 'history' %}active{% endif %}">
+        <span class="nav-ic">📚</span><span data-i18n="nav.history">History</span>
+      </a>
+      <a href="{{ url_for('compare') }}" title="Compare"
+         class="{% if request.endpoint == 'compare' %}active{% endif %}">
+        <span class="nav-ic">⚖️</span><span data-i18n="nav.compare">Compare</span>
+      </a>
+      <a href="{{ url_for('batch') }}" title="Batch Import"
+         class="{% if request.endpoint == 'batch' %}active{% endif %}">
+        <span class="nav-ic">📥</span><span data-i18n="nav.batch">Batch Import</span>
+      </a>
+
+      <div class="nav-section" data-i18n="nav.calculations">Calculations</div>
+      {% for slug, cfg in HYDRAULIC_MODULES.items() %}
+        <a href="{{ url_for('calc_view', slug=slug) }}"
+           title="{{ cfg.name }}"
+           class="{% if request.view_args and request.view_args.get('slug') == slug %}active{% endif %}">
+          <span class="nav-ic">{{ cfg.icon }}</span>
+          <span>{{ cfg.name }}</span>
+        </a>
+      {% endfor %}
+      <a href="{{ url_for('total_pump_head') }}" title="Total Discharge Head"
+         class="{% if request.endpoint == 'total_pump_head' %}active{% endif %}">
+        <span class="nav-ic">💧</span><span>Total Discharge Head</span>
+      </a>
+
+      {% if custom_modules %}
+        <div class="nav-section">Custom Modules</div>
+        {% for m in custom_modules %}
+          <a href="{{ url_for('custom_module_view', slug=m.slug) }}"
+             title="{{ m.name }} — {{ m.status }}">
+            <span class="nav-ic">{{ m.icon }}</span>
+            <span>{{ m.name }}</span>
+          </a>
+        {% endfor %}
+      {% endif %}
+
+      <div class="nav-section">Resources</div>
+      <a href="{{ url_for('pumps_list') }}" title="Pump Databank"
+         class="{% if request.endpoint == 'pumps_list' %}active{% endif %}">
+        <span class="nav-ic">⚙️</span><span data-i18n="nav.pumps">Pump Databank</span>
+      </a>
+
+      {% if is_owner(current_user) %}
+        <div class="nav-section">Administration</div>
+        <a href="{{ url_for('manage_users') }}" title="Users"
+           class="{% if request.endpoint == 'manage_users' %}active{% endif %}">
+          <span class="nav-ic">👥</span><span data-i18n="nav.users">Users</span>
+        </a>
+        <a href="{{ url_for('approvals') }}" title="Approvals"
+           class="{% if request.endpoint == 'approvals' %}active{% endif %}">
+          <span class="nav-ic">✅</span><span data-i18n="nav.approvals">Approvals</span>
+        </a>
+        <a href="{{ url_for('hub') }}" title="Module Hub"
+           class="{% if request.endpoint in ('hub','builder_edit') %}active{% endif %}">
+          <span class="nav-ic">🧩</span><span data-i18n="nav.hub">Module Hub</span>
+        </a>
+      {% endif %}
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="server-status" data-state="connecting" title="Server status">
+        <div class="orb"><div class="orb-core"></div></div>
+        <div class="status-txt">
+          <b data-i18n="status.connecting">Connecting…</b>
+          <small>…</small>
+        </div>
+        <div class="bars"><i></i><i></i><i></i><i></i></div>
+      </div>
+
+      <span class="chip" id="onlineChip" title="Users active in last 2 min">
+        👥 {{ online_count() }} online
+      </span>
+
+      <div class="chip chip-user" title="{{ current_user.username }}">
+        <div class="chip-avatar">
+          {{ (current_user.full_name or current_user.username)[:1] | upper }}
+        </div>
+        <div class="chip-name">
+          <b>{{ current_user.full_name or current_user.username }}</b>
+          <small>{{ current_user.role }}</small>
+        </div>
+      </div>
+
+      <div class="foot-row">
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('logout_view') }}">Logout</a>
+        {% if is_owner(current_user) %}
+        <form method="post" action="{{ url_for('shutdown') }}"
+              data-confirm="i18n:confirm.shutdown" style="flex:1;margin:0;">
+          <button class="btn btn-danger btn-sm" type="submit" style="width:100%;">
+            ⏻ Shutdown
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="sidebar-toggle" id="sidebarToggle"
+              title="Toggle sidebar" aria-label="Toggle sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="4" y1="6"  x2="20" y2="6"/>
+          <line x1="4" y1="12" x2="14" y2="12"/>
+          <line x1="4" y1="18" x2="20" y2="18"/>
+        </svg>
+      </button>
+
+      <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+
+      <button class="icon-btn" id="notifBtn" title="Notifications" aria-label="Notifications">
+        🔔
+      </button>
+
+      <div class="notif-pop" role="dialog" aria-label="Notifications">
+        <div class="notif-head">
+          <b data-i18n="notif.title">Notifications</b>
+          <button class="btn btn-ghost btn-sm" id="notifMarkRead"
+                  data-i18n="notif.markread">Mark all read</button>
+        </div>
+        <div class="notif-list">
+          <div class="notif-item"><div class="notif-body">
+            <p data-i18n="notif.empty">No notifications yet.</p>
+          </div></div>
+        </div>
+      </div>
+
+      <select class="lang-select" id="langSelect" title="Language">
+        <option value="en">🇬🇧 EN</option>
+        <option value="da">🇩🇰 DA</option>
+        <option value="fi">🇫🇮 FI</option>
+      </select>
+
+      <div class="accent-picker" title="Accent color">
+        <span class="accent-dot" data-a="blue"    title="Ramboll blue"></span>
+        <span class="accent-dot" data-a="emerald" title="Emerald"></span>
+        <span class="accent-dot" data-a="purple"  title="Purple"></span>
+        <span class="accent-dot" data-a="orange"  title="Orange"></span>
+        <span class="accent-dot" data-a="rose"    title="Ramboll red"></span>
+      </div>
+
+      <button class="icon-btn" id="themeToggle" title="Toggle theme"
+              aria-label="Toggle theme">🌙</button>
+    </header>
+
+    <main class="content">
+      {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% if msgs %}
+          <div class="flashes">
+            {% for cat, msg in msgs %}
+              <div class="flash flash-{{ cat if cat in ['ok','warn','error','info'] else 'info' }}">
+                {% if cat == 'ok'    %}✅
+                {% elif cat == 'warn' %}⚠️
+                {% elif cat == 'error'%}⛔
+                {% else %}ℹ️{% endif %}
+                <span>{{ msg }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% else %}
+  {% block anon_content %}{% endblock %}
+{% endif %}
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+
+<script>
+  // Sidebar collapse toggle
+  (function () {
+    const btn = document.getElementById("sidebarToggle");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      const root = document.documentElement;
+      const isMobile = window.matchMedia("(max-width: 960px)").matches;
+      if (isMobile) {
+        const cur = root.getAttribute("data-sidebar");
+        root.setAttribute("data-sidebar", cur === "mobile-open" ? "expanded" : "mobile-open");
+      } else {
+        const cur = root.getAttribute("data-sidebar") || "expanded";
+        const next = cur === "collapsed" ? "expanded" : "collapsed";
+        root.setAttribute("data-sidebar", next);
+        try { localStorage.setItem("cv.sidebar", next); } catch (_) {}
+      }
+    });
+    // Close mobile drawer when clicking outside
+    document.addEventListener("click", (e) => {
+      if (document.documentElement.getAttribute("data-sidebar") !== "mobile-open") return;
+      const inSide = e.target.closest(".sidebar");
+      const onBtn  = e.target.closest("#sidebarToggle");
+      if (!inSide && !onBtn) {
+        document.documentElement.setAttribute("data-sidebar", "expanded");
+      }
+    });
+  })();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

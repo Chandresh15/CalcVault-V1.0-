@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+{% block title %}{% if module %}Edit{% else %}New{% endif %} module{% endblock %}
+{% block page_title %}🛠️ {% if module %}Edit: {{ module.name }}{% else %}New Module{% endif %}{% endblock %}
+
+{% block content %}
+<div id="builderRoot">
+
+  <div class="between wrap mb-2" style="gap:.5rem;">
+    <div class="text-muted small">
+      Shortcuts: <kbd>Ctrl</kbd>+<kbd>S</kbd> save ·
+      <kbd>Ctrl</kbd>+<kbd>I</kbd> new input ·
+      <kbd>Ctrl</kbd>+<kbd>O</kbd> new output
+    </div>
+    <div class="hstack wrap" style="gap:.5rem;">
+      <button class="btn" onclick="CV.builder.save()">💾 Save</button>
+      {% if module %}
+        <button class="btn btn-soft" onclick="shareDialog()">🔗 Share link</button>
+        <a class="btn btn-soft" href="{{ url_for('custom_module_view', slug=module.slug) }}">▶ Open</a>
+        <a class="btn btn-ghost" href="{{ url_for('builder_export', module_id=module.id) }}">⬇ Export</a>
+      {% endif %}
+      <a class="btn btn-ghost" href="{{ url_for('hub') }}">← Hub</a>
+    </div>
+  </div>
+
+  <input type="hidden" id="mId" value="{{ module.id if module else '' }}">
+
+  <div class="grid" style="grid-template-columns: 1fr 340px; gap:1.25rem;">
+
+    <div>
+      {# ---- Metadata ---- #}
+      <div class="card mb-2">
+        <div class="card-title"><span class="ic">📝</span> Details</div>
+        <div class="grid grid-2">
+          <div class="field"><label>Name</label>
+            <input class="input" id="mName"
+                   value="{{ module.name if module else '' }}" required></div>
+          <div class="field"><label>Icon (emoji)</label>
+            <input class="input" id="mIcon"
+                   value="{{ module.icon if module else '📐' }}"></div>
+          <div class="field"><label>Category</label>
+            <input class="input" id="mCategory"
+                   value="{{ module.category if module else 'Custom' }}"></div>
+          <div class="field"><label>Status</label>
+            <select id="mStatus">
+              <option value="active"      {% if module and module.status=='active'%}selected{% endif %}>active</option>
+              <option value="maintenance" {% if module and module.status=='maintenance'%}selected{% endif %}>maintenance</option>
+              <option value="disabled"    {% if module and module.status=='disabled'%}selected{% endif %}>disabled</option>
+            </select></div>
+        </div>
+        <div class="field"><label>Description</label>
+          <textarea id="mDescription">{{ module.description if module else '' }}</textarea>
+        </div>
+      </div>
+
+      {# ---- Inputs grid ---- #}
+      <div class="card mb-2">
+        <div class="between mb-1">
+          <div class="card-title" style="margin:0;">
+            <span class="ic">⬅</span> Inputs
+          </div>
+          <button class="btn btn-soft btn-sm" type="button"
+                  onclick="CV.builder.addRow('inputsGrid')">+ Input</button>
+        </div>
+        <div class="grid-editor">
+          <table id="inputsGrid">
+            <thead><tr>
+              <th>Variable</th><th>Label</th><th>Unit</th>
+              <th>Default</th><th>Note</th><th></th>
+            </tr></thead>
+            <tbody>
+              {% for i in (module.inputs if module else []) %}
+                <tr>
+                  <td><input data-k="var" value="{{ i.var }}"></td>
+                  <td><input data-k="label" value="{{ i.label }}"></td>
+                  <td><input data-k="unit" value="{{ i.unit }}"></td>
+                  <td><input data-k="default" value="{{ i.default }}"></td>
+                  <td><input data-k="note" value="{{ i.note }}"></td>
+                  <td class="text-right">
+                    <button class="btn btn-ghost btn-sm" type="button"
+                            onclick="CV.builder.removeRow(this)">✕</button>
+                  </td>
+                </tr>
+              {% endfor %}
+              <tr data-template class="hidden">
+                <td><input data-k="var" placeholder="e.g. d_mm"></td>
+                <td><input data-k="label" placeholder="Diameter"></td>
+                <td><input data-k="unit" placeholder="mm"></td>
+                <td><input data-k="default" value="0"></td>
+                <td><input data-k="note" placeholder="Reference note"></td>
+                <td class="text-right">
+                  <button class="btn btn-ghost btn-sm" type="button"
+                          onclick="CV.builder.removeRow(this)">✕</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {# ---- Outputs grid ---- #}
+      <div class="card mb-2">
+        <div class="between mb-1">
+          <div class="card-title" style="margin:0;">
+            <span class="ic">➡</span> Outputs
+          </div>
+          <button class="btn btn-soft btn-sm" type="button"
+                  onclick="CV.builder.addRow('outputsGrid')">+ Output</button>
+        </div>
+        <div class="grid-editor">
+          <table id="outputsGrid">
+            <thead><tr>
+              <th>Variable</th><th>Label</th><th>Unit</th>
+              <th style="width:35%;">Formula</th>
+              <th>Dec.</th><th>Primary</th><th></th>
+            </tr></thead>
+            <tbody>
+              {% for o in (module.outputs if module else []) %}
+                <tr>
+                  <td><input data-k="var" value="{{ o.var }}"></td>
+                  <td><input data-k="label" value="{{ o.label }}"></td>
+                  <td><input data-k="unit" value="{{ o.unit }}"></td>
+                  <td class="formula-cell">
+                    <input data-k="formula" value="{{ o.formula }}"></td>
+                  <td><input data-k="decimals" value="{{ o.decimals }}"></td>
+                  <td>
+                    <select data-k="primary">
+                      <option value="false">no</option>
+                      <option value="true" {% if o.primary %}selected{% endif %}>yes</option>
+                    </select>
+                  </td>
+                  <td class="text-right">
+                    <button class="btn btn-ghost btn-sm" type="button"
+                            onclick="CV.builder.removeRow(this)">✕</button>
+                  </td>
+                </tr>
+              {% endfor %}
+              <tr data-template class="hidden">
+                <td><input data-k="var" placeholder="e.g. area"></td>
+                <td><input data-k="label" placeholder="Area"></td>
+                <td><input data-k="unit" placeholder="m²"></td>
+                <td class="formula-cell">
+                  <input data-k="formula" placeholder="pi*d_mm/1000*d_mm/1000/4"></td>
+                <td><input data-k="decimals" value="3"></td>
+                <td>
+                  <select data-k="primary">
+                    <option value="false">no</option>
+                    <option value="true">yes</option>
+                  </select>
+                </td>
+                <td class="text-right">
+                  <button class="btn btn-ghost btn-sm" type="button"
+                          onclick="CV.builder.removeRow(this)">✕</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-muted small mt-1" style="margin:.5rem 0 0;">
+          {{ cheat_sheet }}
+        </p>
+      </div>
+
+      {# ---- Assigned users ---- #}
+      <div class="card mb-2">
+        <div class="card-title"><span class="ic">👥</span> Visible to</div>
+        <p class="text-muted small">
+          Leave all unchecked to make the module visible to <b>everyone</b>.
+        </p>
+        <div class="grid grid-3">
+          {% for u in users %}
+            {% if u.role != 'owner' %}
+              <label class="hstack">
+                <input type="checkbox" name="assignedUser" value="{{ u.id }}"
+                  {% if module and u.id in module.assigned_users %}checked{% endif %}>
+                {{ u.full_name or u.username }} <span class="text-muted small">({{ u.username }})</span>
+              </label>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+
+      {# ---- Version history ---- #}
+      {% if versions %}
+        <details class="ref mt-2">
+          <summary>Version history ({{ versions|length }})</summary>
+          <table>
+            <thead><tr><th>Version</th><th>Saved</th><th></th></tr></thead>
+            <tbody>
+              {% for v in versions %}
+                <tr>
+                  <td>v{{ v.version }}</td>
+                  <td class="small">{{ v.saved_at[:16].replace('T',' ') }}</td>
+                  <td class="text-right">
+                    <form method="post" style="margin:0;"
+                          action="{{ url_for('builder_rollback', module_id=module.id, version=v.version) }}"
+                          data-confirm="Rollback to v{{ v.version }}? Current state will be snapshotted first.">
+                      <button class="btn btn-soft btn-sm" type="submit">↺ Rollback</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      {% endif %}
+    </div>
+
+    {# ---- Live test panel ---- #}
+    <div>
+      <div class="test-panel sticky-preview">
+        <h3>⚡ Live test</h3>
+        <p class="text-muted small">
+          Values below are only used for testing — they are not saved.
+        </p>
+        <div id="testPanel">
+          {% for i in (module.inputs if module else []) %}
+            <div class="row">
+              <label>{{ i.label }} <span class="text-muted small">({{ i.unit }})</span></label>
+              <input class="input" data-test-var="{{ i.var }}"
+                     value="{{ i.default }}" style="max-width:120px;">
+            </div>
+          {% endfor %}
+          {% if not module or not module.inputs %}
+            <p class="text-muted small">Add inputs to start testing.</p>
+          {% endif %}
+        </div>
+        <hr>
+        <b class="small">Results</b>
+        <div id="testResult" class="mt-1">
+          <div class="text-muted small">—</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Restore-draft: when script.js dispatches cv:restore-draft, we
+  // re-render the input/output rows from the draft data.
+  const root = document.getElementById("builderRoot");
+  root.addEventListener("cv:restore-draft", (e) => {
+    const d = e.detail;
+    if (!d) return;
+    // Clear existing rows (except templates)
+    ["inputsGrid","outputsGrid"].forEach(gid => {
+      document.querySelectorAll(`#${gid} tbody tr:not([data-template])`)
+              .forEach(tr => tr.remove());
+    });
+    (d.inputs || []).forEach(i => {
+      CV.builder.addRow("inputsGrid");
+      const last = document.querySelector(
+        "#inputsGrid tbody tr:not([data-template]):last-of-type");
+      Object.entries(i).forEach(([k,v]) => {
+        const el = last.querySelector(`[data-k="${k}"]`);
+        if (el) el.value = v;
+      });
+    });
+    (d.outputs || []).forEach(o => {
+      CV.builder.addRow("outputsGrid");
+      const last = document.querySelector(
+        "#outputsGrid tbody tr:not([data-template]):last-of-type");
+      Object.entries(o).forEach(([k,v]) => {
+        const el = last.querySelector(`[data-k="${k}"]`);
+        if (el) el.value = (k === "primary") ? (v ? "true" : "false") : v;
+      });
+    });
+  });
+
+  {% if module %}
+  function shareDialog() {
+    const body = `
+      <form onsubmit="return createShare(event)">
+        <div class="field"><label>Expires in (hours, blank = never)</label>
+          <input class="input" name="ttl_hours" type="number" min="0"></div>
+        <div class="field"><label>Max views (blank = unlimited)</label>
+          <input class="input" name="max_views" type="number" min="0"></div>
+        <button class="btn" type="submit">Generate link</button>
+      </form>
+      <div id="shareResult" class="mt-2"></div>`;
+    CV.openModal("🔗 Create share link", body, "");
+  }
+
+  async function createShare(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const r = await fetch("{{ url_for('builder_share', module_id=module.id) }}", {
+      method: "POST", body: fd, credentials: "same-origin"
+    });
+    const j = await r.json();
+    const out = document.getElementById("shareResult");
+    if (j.ok) {
+      out.innerHTML =
+        `<div class="flash flash-ok"><span>${j.url}</span></div>
+         <button class="btn btn-soft mt-1" onclick="CV.copyToClipboard('${j.url}')">
+           📋 Copy to clipboard</button>`;
+    } else {
+      out.innerHTML = `<div class="flash flash-error">${j.error}</div>`;
+    }
+    return false;
+  }
+  {% endif %}
+</script>
+{% endblock %}

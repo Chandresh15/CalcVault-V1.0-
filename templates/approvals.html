@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Approvals{% endblock %}
+{% block page_title %}✅ Approvals Queue{% endblock %}
+
+{% block content %}
+<p class="text-muted small mb-2">
+  {{ rows|length }} calculation(s) awaiting your review.
+  Reviewer comments are stored and shown to the author.
+</p>
+
+{% if not rows %}
+  <div class="card text-center" style="padding:2rem;">
+    <div style="font-size:2.4rem;">🎉</div>
+    <h2 style="margin:.5rem 0 .1rem;">Inbox zero</h2>
+    <p class="text-muted">Nothing pending review right now.</p>
+  </div>
+{% else %}
+  <div class="vstack">
+    {% for r in rows %}
+      <div class="card">
+        <div class="between wrap mb-1" style="gap:.5rem;">
+          <div>
+            <h3 style="margin:0;">
+              {{ r.module_icon }} {{ r.module_name }}
+              <span class="pill pill-pending">pending</span>
+            </h3>
+            <p class="text-muted small" style="margin:.2rem 0 0;">
+              #{{ r.id }} · by <b>{{ r.user }}</b> ·
+              {{ r.created_at[:16].replace('T',' ') }}
+            </p>
+          </div>
+        </div>
+
+        {% if r.formula %}
+          <div class="formula-box mb-2">{{ r.formula }}</div>
+        {% endif %}
+
+        <div class="grid grid-2">
+          <div>
+            <b class="small">Inputs</b>
+            <dl class="result-grid">
+              {% for k, v in r.inputs.items() %}
+                {% if k != 'fittings' %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endif %}
+              {% endfor %}
+            </dl>
+          </div>
+          <div>
+            <b class="small">Results</b>
+            <dl class="result-grid">
+              {% for k, v in r.results.items() %}
+                {% if v is not none and k != 'fittings' %}
+                  <dt>{{ k }}</dt><dd><b>{{ v }}</b></dd>
+                {% endif %}
+              {% endfor %}
+            </dl>
+          </div>
+        </div>
+
+        <form method="post"
+              action="{{ url_for('approvals_act', calc_id=r.id, action='approve') }}"
+              class="mt-2">
+          <div class="field">
+            <label>Reviewer comment (optional)</label>
+            <input class="input" name="comment"
+                   placeholder="e.g. Verified against project spec">
+          </div>
+          <div class="hstack wrap" style="gap:.5rem;">
+            <button class="btn btn-ok" type="submit">✅ Approve</button>
+            <button class="btn btn-warn" type="submit"
+                    formaction="{{ url_for('approvals_act', calc_id=r.id, action='reject') }}">
+              ✖ Reject
+            </button>
+            <span class="spacer"></span>
+            <a class="btn btn-ghost btn-sm"
+               href="{{ url_for('history_pdf', calc_id=r.id) }}">📄 PDF</a>
+            <button class="btn btn-danger btn-sm" type="submit"
+                    formaction="{{ url_for('approvals_act', calc_id=r.id, action='delete') }}"
+                    data-confirm="Permanently delete this calculation?">
+              🗑️ Delete
+            </button>
+          </div>
+        </form>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

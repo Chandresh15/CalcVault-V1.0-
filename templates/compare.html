@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Compare{% endblock %}
+{% block page_title %}⚖️ Compare calculations{% endblock %}
+
+{% block content %}
+{% if not rows %}
+  <div class="card">
+    <p class="text-muted">
+      Select 2–4 calculations to compare side-by-side.
+      Ctrl-click rows on <a href="{{ url_for('history') }}">History</a>,
+      then click the <b>Compare</b> button — or use the quick picker below.
+    </p>
+    <form method="get" class="mt-1">
+      <div class="field">
+        <label>Comma-separated IDs to compare</label>
+        <input class="input" name="ids"
+               placeholder="e.g. 12, 15, 18">
+      </div>
+      <button class="btn" type="submit">Load comparison</button>
+    </form>
+    <details class="ref mt-2" open>
+      <summary>Recent calculations</summary>
+      <table>
+        <thead><tr><th>ID</th><th>When</th><th>Module</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for p in pickable %}
+            <tr><td class="text-mono">{{ p.id }}</td>
+                <td class="small">{{ p.created_at[:16].replace('T',' ') }}</td>
+                <td>{{ p.module_name }}</td>
+                <td><span class="pill pill-{{ p.status }}">{{ p.status }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+  </div>
+{% else %}
+  <p class="text-muted small mb-2">Comparing {{ rows|length }} calculations.</p>
+  <div class="grid grid-{{ [rows|length, 4]|min }}">
+    {% for r in rows %}
+      <div class="card">
+        <div class="card-title">
+          {{ r.module_icon }} {{ r.module_name }}
+          <span class="spacer"></span>
+          <span class="pill pill-{{ r.status }}">{{ r.status }}</span>
+        </div>
+        <div class="text-muted small mb-1">
+          #{{ r.id }} · {{ r.created_at[:16].replace('T',' ') }}
+        </div>
+        {% if r.formula %}
+          <div class="formula-box mb-1" style="font-size:.82rem;">
+            {{ r.formula }}
+          </div>
+        {% endif %}
+        <b class="small">Inputs</b>
+        <dl class="result-grid">
+          {% for k, v in r.inputs.items() %}
+            {% if k != 'fittings' %}
+              <dt>{{ k }}</dt><dd>{{ v }}</dd>
+            {% endif %}
+          {% endfor %}
+        </dl>
+        <b class="small mt-2" style="display:block;">Results</b>
+        <dl class="result-grid">
+          {% for k, v in r.results.items() %}
+            {% if v is not none and k != 'fittings' %}
+              <dt>{{ k }}</dt><dd><b>{{ v }}</b></dd>
+            {% endif %}
+          {% endfor %}
+        </dl>
+      </div>
+    {% endfor %}
+  </div>
+  <div class="mt-2">
+    <a class="btn btn-ghost" href="{{ url_for('history') }}">← Back to history</a>
+    <a class="btn btn-soft" href="{{ url_for('compare') }}">Clear selection</a>
+  </div>
+{% endif %}
+{% endblock %}

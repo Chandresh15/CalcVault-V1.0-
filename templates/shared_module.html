@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% if module %}{{ module.name }}{% else %}Link expired{% endif %} — CalcVault</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="login-shell" style="align-items:flex-start;padding-top:3rem;">
+  <div style="width:min(720px,100%);">
+
+    <div class="hstack mb-2">
+      <div class="brand-mark">R</div>
+      <div>
+        <b style="color:var(--brand-blue);">RAMBOLL · CalcVault</b>
+        <div class="text-muted small">Public shared module (view-only)</div>
+      </div>
+    </div>
+
+    {% if expired or not module %}
+      <div class="card text-center" style="padding:2rem;">
+        <div style="font-size:2.4rem;">🔒</div>
+        <h2>This share link is no longer valid</h2>
+        <p class="text-muted">It may have expired or reached its view limit.</p>
+      </div>
+    {% else %}
+      <div class="card mb-2">
+        <h2 style="margin:0;">{{ module.icon }} {{ module.name }}</h2>
+        {% if module.description %}
+          <p class="text-muted small">{{ module.description }}</p>
+        {% endif %}
+        <div class="text-muted small">
+          Views: {{ module._share_meta.view_count }}
+          {% if module._share_meta.max_views %}
+            / {{ module._share_meta.max_views }}
+          {% endif %}
+          {% if module._share_meta.expires_at %}
+            · Expires {{ module._share_meta.expires_at[:16].replace('T',' ') }}
+          {% endif %}
+        </div>
+      </div>
+
+      <form method="post" class="card" data-enter-advance>
+        <div class="card-title"><span class="ic">✏️</span> Inputs</div>
+        {% for i in module.inputs %}
+          <div class="field">
+            <label>{{ i.label }} <span class="hint">({{ i.unit }})</span></label>
+            <input class="input" name="{{ i.var }}" type="number" step="any"
+                   value="{{ values[i.var] }}" required>
+          </div>
+        {% endfor %}
+        <button class="btn" type="submit">Calculate</button>
+      </form>
+
+      {% if result and result.results %}
+        <div class="result-card mt-2">
+          {% if result.primary_var %}
+            {% set pspec = (module.outputs | selectattr('var','equalto', result.primary_var) | list)[0] %}
+            <div class="result-primary">
+              {{ result.results[result.primary_var] }}
+              <small>{{ pspec.unit }}</small>
+            </div>
+            <div class="text-muted small mb-1">{{ pspec.label }}</div>
+          {% endif %}
+          <dl class="result-grid">
+            {% for o in module.outputs %}
+              {% if o.var != result.primary_var %}
+                <dt>{{ o.label }}</dt>
+                <dd>{{ result.results.get(o.var, '—') }}
+                  <span class="text-muted small">{{ o.unit }}</span></dd>
+              {% endif %}
+            {% endfor %}
+          </dl>
+        </div>
+      {% endif %}
+    {% endif %}
+
+    <p class="text-center text-muted small mt-3">
+      Powered by Ramboll CalcVault — internal engineering tool.
+    </p>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
