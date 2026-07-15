@@ -26,13 +26,8 @@
 
   <link rel="preconnect" href="https://rsms.me/">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <link rel="icon" href="data:image/svg+xml,
-    <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>
-      <rect width='32' height='32' rx='9' fill='%23E4002B'/>
-      <text x='16' y='22' text-anchor='middle' fill='white'
-            font-family='Inter,Arial' font-weight='700' font-size='18'
-            letter-spacing='-0.03em'>R</text>
-    </svg>">
+  <link rel="icon" type="image/png"
+      href="{{ url_for('static', filename='img/ramboll-symbol.png') }}">
   {% block head_extra %}{% endblock %}
 </head>
 <body>
@@ -42,7 +37,10 @@
 
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-mark">R</div>
+      <div class="brand-mark">
+        <img src="{{ url_for('static', filename='img/ramboll-symbol.png') }}"
+            alt="Ramboll symbol">
+      </div>
       <div class="brand-txt">
         <b>RAMBOLL</b><span>CalcVault</span>
       </div>
@@ -66,19 +64,29 @@
         <span class="nav-ic">📥</span><span data-i18n="nav.batch">Batch Import</span>
       </a>
 
-      <div class="nav-section" data-i18n="nav.calculations">Calculations</div>
-      {% for slug, cfg in HYDRAULIC_MODULES.items() %}
-        <a href="{{ url_for('calc_view', slug=slug) }}"
-           title="{{ cfg.name }}"
-           class="{% if request.view_args and request.view_args.get('slug') == slug %}active{% endif %}">
-          <span class="nav-ic">{{ cfg.icon }}</span>
-          <span>{{ cfg.name }}</span>
-        </a>
+      {% for group in SIDEBAR_MODULE_GROUPS %}
+        <div class="nav-section">{{ group["title"] }}</div>
+        {% for item in group["items"] %}
+          {% if item["endpoint"] == 'calc_view' %}
+            {% set is_active = request.endpoint == 'calc_view'
+                                and request.view_args
+                                and request.view_args.get('slug') == item["slug"] %}
+            <a href="{{ url_for('calc_view', slug=item['slug']) }}"
+              title="{{ item['name'] }}"
+              class="{% if is_active %}active{% endif %}">
+              <span class="nav-ic">{{ item["icon"] }}</span>
+              <span>{{ item["name"] }}</span>
+            </a>
+          {% else %}
+            <a href="{{ url_for(item['endpoint']) }}"
+              title="{{ item['name'] }}"
+              class="{% if request.endpoint == item['endpoint'] %}active{% endif %}">
+              <span class="nav-ic">{{ item["icon"] }}</span>
+              <span>{{ item["name"] }}</span>
+            </a>
+          {% endif %}
+        {% endfor %}
       {% endfor %}
-      <a href="{{ url_for('total_pump_head') }}" title="Total Discharge Head"
-         class="{% if request.endpoint == 'total_pump_head' %}active{% endif %}">
-        <span class="nav-ic">💧</span><span>Total Discharge Head</span>
-      </a>
 
       {% if custom_modules %}
         <div class="nav-section">Custom Modules</div>
