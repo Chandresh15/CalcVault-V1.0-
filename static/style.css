@@ -228,22 +228,33 @@ code, pre, kbd, .text-mono { font-family: var(--font-mono); font-feature-setting
   padding: 8px 10px 16px;
 }
 .brand-mark {
-  width: 38px; height: 38px;
+  width: 38px;
+  height: 38px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #fff;
-  display: grid; place-items: center;
-  font-weight: 700; font-size: 1.05rem;
-  letter-spacing: -0.03em;
-  box-shadow: 0 4px 12px var(--accent-glow),
-              inset 0 1px 0 rgba(255,255,255,.25);
+  background: transparent;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  box-shadow: none;
   position: relative;
+  flex-shrink: 0;
 }
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
 .brand-mark::after {
-  content: "";
-  position: absolute; inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.35), transparent 60%);
+  display: none;
+}
+.login-card .brand-mark {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  margin-bottom: 20px;
 }
 .brand-txt      { display: flex; flex-direction: column; line-height: 1.1; }
 .brand-txt b    { color: var(--ink); letter-spacing: -0.01em; font-size: .82rem; font-weight: 700; }
