@@ -454,6 +454,12 @@ def m11_total_pump_head(flow_m3h: float, pipe_id_mm: float, length_m: float,
 # ===============================================================
 # MODULE 12 — Pump Power Calculator            ⚡
 # ===============================================================
+# ===============================================================
+# MODULE 12 — Pump Power Calculator            ⚡
+# ===============================================================
+# ===============================================================
+# MODULE 12 — Pump Power Calculator            ⚡
+# ===============================================================
 def m12_pump_power(flow_m3h: float, head_m: float,
                    pump_eff_pct: float, motor_eff_pct: float,
                    density_kg_m3: float = 1000.0,
@@ -464,8 +470,6 @@ def m12_pump_power(flow_m3h: float, head_m: float,
     P_hyd   = ρ·g·Q·H              (SI → W)
     P_shaft = P_hyd / η_pump
     P_input = P_shaft / η_motor
-
-    Efficiencies accepted either as 0-1 (decimal) or 0-100 (percent) — auto-detected.
 
     Validated:
         Q=100 m³/hr, H=30 m, η_p=75%, η_m=92%, ρ=1000
@@ -479,7 +483,6 @@ def m12_pump_power(flow_m3h: float, head_m: float,
     rho = _pos(density_kg_m3, "Fluid density")
     sm  = _nn(safety_margin_pct, "Safety margin")
 
-    # Efficiency normalisation
     if e_p > 1.0: e_p /= 100.0
     if e_m > 1.0: e_m /= 100.0
     if e_p >= 1.0 or e_m >= 1.0:
@@ -487,24 +490,21 @@ def m12_pump_power(flow_m3h: float, head_m: float,
     if e_p <= 0 or e_m <= 0:
         raise ValueError("Efficiencies must be positive.")
 
-    Q_si    = Q / 3600.0                         # m³/s
-    P_hyd_W = rho * G * Q_si * H                 # W
+    Q_si    = Q / 3600.0
+    P_hyd_W = rho * G * Q_si * H
     P_sh_W  = P_hyd_W / e_p
     P_in_W  = P_sh_W  / e_m
 
     P_in_kW = P_in_W / 1000.0
     P_sized = P_in_kW * (1.0 + sm / 100.0)
 
-    # Next IEC motor size at or above the sized power
     rec_motor = next(
         (m for m in IEC_MOTOR_SIZES_KW if m >= P_sized),
         IEC_MOTOR_SIZES_KW[-1],
     )
 
-    # Specific energy: kWh consumed per cubic metre pumped
-    sp_energy = P_in_kW / Q if Q > 0 else 0.0    # kWh/m³
+    sp_energy = P_in_kW / Q if Q > 0 else 0.0
 
-    # Sanity check for absurd inputs
     warning = None
     if P_in_kW > 1000:
         warning = ("Motor input exceeds 1 MW — verify inputs; "
@@ -523,8 +523,9 @@ def m12_pump_power(flow_m3h: float, head_m: float,
     }
 
 
-# ---- Backwards-compat alias for any old imports of calc_pump_power ----
 calc_pump_power = m12_pump_power
+
+
 # ===============================================================
 # MODULE 13 — Pump Affinity Laws                ⚙️
 # ===============================================================
