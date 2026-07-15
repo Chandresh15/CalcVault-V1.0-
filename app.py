@@ -845,17 +845,40 @@ def history_submit(calc_id):
     return redirect(url_for("history"))
 
 
-@app.route("/history/<int:calc_id>/cancel", methods=["POST"])
-def history_cancel(calc_id):
+@app.route("/history/<int:calc_id>/submit", methods=["POST"])
+def history_submit(calc_id):
     if (r := need_login()): return r
     row = _get_calc(calc_id)
     if not row or not _can_touch_calc(row):
         abort(404)
-    if row["status"] == "pending":
-        auth.get_db().execute(
-            "UPDATE calculations SET status='draft' WHERE id=?", (calc_id,))
-        auth.get_db().commit()
-        flash("Approval cancelled.", "ok")
+    if row["status"] in ("pending", "approved"):
+        flash("Already submitted.", "warn")
+        return redirect(url_for("history"))
+
+    # ---- Update status ----
+    db = auth.get_db()
+    db.execute(
+        "UPDATE calculations SET status='pending' WHERE id=?", (calc_id,))
+    db.commit()
+
+    # ---- Notify owners in the CALC AUTHOR's name (not the clicker's) ----
+    author = auth.get_user(row["user_id"])
+    author_name = (author or {}).get("full_name") \
+                  or (author or {}).get("username") or "Unknown user"
+
+    for owner in [x for x in auth.list_users_public() if x["role"] == "owner"]:
+        # Don't notify an owner about their own submission
+        if owner["id"] == row["user_id"]:
+            continue
+        push_notification(
+            owner["id"],
+            "New approval request",
+            f"{row['module_name']} submitted by {author_name}",
+            "info",
+            url_for("approvals"),
+        )
+
+    flash("Submitted for approval.", "ok")
     return redirect(url_for("history"))
 
 
