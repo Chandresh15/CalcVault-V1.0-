@@ -49,8 +49,9 @@ app.config.update(
     SECRET_KEY = os.environ.get("CV_SECRET",
                                 "ramboll-calcvault-local-dev-key"),
     PERMANENT_SESSION_LIFETIME = timedelta(hours=10),
-    MAX_CONTENT_LENGTH         = 20 * 1024 * 1024,   # 20 MB cap
+    MAX_CONTENT_LENGTH         = 20 * 1024 * 1024,
     JSON_SORT_KEYS             = False,
+    TEMPLATES_AUTO_RELOAD      = True,
 )
 
 # --- init database + sub-modules -------------------------------
@@ -103,12 +104,13 @@ app.teardown_appcontext(auth.close_db)
 def _inject_globals():
     u = auth.current_user()
     return dict(
-        current_user       = u,
-        is_owner           = auth.is_owner,
-        online_count       = auth.online_count,
-        HYDRAULIC_MODULES  = HYDRAULIC_MODULES,
-        custom_modules     = (mb.list_modules(status="active", for_user_id=u["id"])
-                              if u else []),
+        current_user          = u,
+        is_owner              = auth.is_owner,
+        online_count          = auth.online_count,
+        HYDRAULIC_MODULES     = HYDRAULIC_MODULES,
+        SIDEBAR_MODULE_GROUPS = SIDEBAR_MODULE_GROUPS,
+        custom_modules        = (mb.list_modules(status="active", for_user_id=u["id"])
+                                 if u else []),
     )
 
 # ===============================================================
@@ -255,7 +257,7 @@ HYDRAULIC_MODULES: Dict[str, Dict[str, Any]] = {
         "formula": "W = Q / (V · d)",
     },
     "channel-head-loss": {
-        "id": 5, "name": "Channel Head Loss (Manning)", "icon": "〽️",
+        "id": 5, "name": "Channel Head Loss", "icon": "〽️",
         "category": "Channels", "fn": calc.m5_channel_head_loss,
         "inputs": [
             ("flow_m3h",       "Flow (Q)",        "m³/hr", 212,   "flow"),
@@ -350,11 +352,11 @@ HYDRAULIC_MODULES: Dict[str, Dict[str, Any]] = {
         "id": 12, "name": "Pump Power Calculator", "icon": "⚡",
         "category": "Pump", "fn": calc.m12_pump_power,
         "inputs": [
-            ("flow_m3h",       "Flow (Q)",            "m³/hr", 100,  "flow"),
-            ("head_m",         "Total Head (H)",      "m",      30,  "length"),
-            ("pump_eff_pct",   "Pump Efficiency (η_p)","%",     75,  None),
-            ("motor_eff_pct",  "Motor Efficiency (η_m)","%",    92,  None),
-            ("density_kg_m3",  "Fluid Density (ρ)",   "kg/m³", 1000, None),
+            ("flow_m3h",       "Flow (Q)",              "m³/hr", 100,  "flow"),
+            ("head_m",         "Total Head (H)",        "m",      30,  "length"),
+            ("pump_eff_pct",   "Pump Efficiency (η_p)", "%",      75,  None),
+            ("motor_eff_pct",  "Motor Efficiency (η_m)","%",      92,  None),
+            ("density_kg_m3",  "Fluid Density (ρ)",     "kg/m³", 1000, None),
         ],
         "outputs": [
             ("hydraulic_power_kw",    "Hydraulic Power (P_hyd)",  "kW",     True),
@@ -366,19 +368,54 @@ HYDRAULIC_MODULES: Dict[str, Dict[str, Any]] = {
         "formula": ("P_hyd = ρ·g·Q·H     ·     "
                     "P_shaft = P_hyd / η_p     ·     "
                     "P_input = P_shaft / η_m"),
-        "reference": {
-            "kind": "fluid_density",
-            "table": [
-                {"material": "Water (fresh, 20 °C)",     "c": 1000},
-                {"material": "Water (sea, 20 °C)",       "c": 1025},
-                {"material": "Sludge (thin, 2% DS)",     "c": 1010},
-                {"material": "Sludge (thick, 6% DS)",    "c": 1040},
-                {"material": "Diesel",                   "c": 830},
-                {"material": "Glycol (50/50 water mix)", "c": 1067},
-            ],
-        },
+        "references": [
+            {
+                "kind": "iec_motor",
+                "display_only": True,        # ← no Use buttons, purely informational
+                "table": [
+                    {"kw": 0.75, "hp": 1.0},
+                    {"kw": 1.1,  "hp": 1.5},
+                    {"kw": 1.5,  "hp": 2.0},
+                    {"kw": 2.2,  "hp": 3.0},
+                    {"kw": 3.0,  "hp": 4.0},
+                    {"kw": 4.0,  "hp": 5.5},
+                    {"kw": 5.5,  "hp": 7.5},
+                    {"kw": 7.5,  "hp": 10},
+                    {"kw": 11,   "hp": 15},
+                    {"kw": 15,   "hp": 20},
+                    {"kw": 18.5, "hp": 25},
+                    {"kw": 22,   "hp": 30},
+                    {"kw": 30,   "hp": 40},
+                    {"kw": 37,   "hp": 50},
+                    {"kw": 45,   "hp": 60},
+                    {"kw": 55,   "hp": 75},
+                    {"kw": 75,   "hp": 100},
+                    {"kw": 90,   "hp": 125},
+                    {"kw": 110,  "hp": 150},
+                    {"kw": 132,  "hp": 180},
+                    {"kw": 160,  "hp": 215},
+                    {"kw": 200,  "hp": 270},
+                    {"kw": 250,  "hp": 335},
+                    {"kw": 315,  "hp": 425},
+                    {"kw": 400,  "hp": 540},
+                    {"kw": 500,  "hp": 670},
+                ],
+            },
+            {
+                "kind": "fluid_density",
+                "table": [
+                    {"material": "Water (fresh, 20 °C)",     "c": 1000},
+                    {"material": "Water (sea, 20 °C)",       "c": 1025},
+                    {"material": "Sludge (thin, 2% DS)",     "c": 1010},
+                    {"material": "Sludge (thick, 6% DS)",    "c": 1040},
+                    {"material": "Diesel",                   "c": 830},
+                    {"material": "Glycol (50/50 water mix)", "c": 1067},
+                ],
+            },
+        ],
         "show_pump_suggest": True,
     },
+
     "pump-affinity": {
         "id": 13, "name": "Pump Affinity Laws", "icon": "⚙️",
         "category": "Pump", "fn": calc.m13_pump_affinity,
@@ -497,6 +534,112 @@ HYDRAULIC_MODULES: Dict[str, Dict[str, Any]] = {
         },
     },    
 }
+# ===============================================================
+# Module display metadata + ordering
+# Keeps routing/calculation logic untouched, only controls UI labels/order
+# ===============================================================
+MODULE_META = {
+    "pipe-diameter":   {"name": "Pipe Diameter Sizing",          "icon": "📏", "category": "HYDRAULICS"},
+    "pipe-head-loss":  {"name": "Pipe Head Loss",                "icon": "💦", "category": "HYDRAULICS"},
+    "flow-through-pipe":{"name":"Flow Through Pipe",             "icon": "🌊", "category": "HYDRAULICS"},
+
+    "pump-power":      {"name": "Pump Power Calculator",         "icon": "🚀", "category": "PUMPS"},
+    "pump-affinity":   {"name": "Pump Affinity Laws",            "icon": "⚙️", "category": "PUMPS"},
+
+    "channel-sizing":  {"name": "Channel Sizing",                "icon": "🌊", "category": "OPEN CHANNELS"},
+    "channel-head-loss":{"name":"Channel Head Loss",   "icon": "📉", "category": "OPEN CHANNELS"},
+    "weir":            {"name": "Rectangular Weir",              "icon": "🌀", "category": "OPEN CHANNELS"},
+    "bell-mouth":      {"name": "Bell-Mouth Entry Loss",         "icon": "🔔", "category": "OPEN CHANNELS"},
+
+    "tank-volume":     {"name": "Circular Tank Volume",          "icon": "🏗️", "category": "TANKS"},
+    "tank-diameter":   {"name": "Tank Diameter Sizing",          "icon": "📐", "category": "TANKS"},
+    "liquid-height":   {"name": "Liquid Height",                 "icon": "💧", "category": "TANKS"},
+
+    "blower-power":    {"name": "Air Blower / Compressor",       "icon": "💨", "category": "MECHANICAL"},
+    "screw-conveyor":  {"name": "Screw Conveyor",                "icon": "🌀", "category": "MECHANICAL"},
+}
+
+# Apply display metadata to existing module definitions
+for _slug, _meta in MODULE_META.items():
+    if _slug in HYDRAULIC_MODULES:
+        HYDRAULIC_MODULES[_slug].update(_meta)
+
+# Desired UI order (Python dict preserves insertion order)
+DISPLAY_ORDER = [
+    # HYDRAULICS
+    "pipe-diameter",
+    "pipe-head-loss",
+    "flow-through-pipe",
+
+    # PUMPS
+    "pump-power",
+    "pump-affinity",
+
+    # OPEN CHANNELS
+    "channel-sizing",
+    "channel-head-loss",
+    "weir",
+    "bell-mouth",
+
+    # TANKS
+    "tank-volume",
+    "tank-diameter",
+    "liquid-height",
+
+    # MECHANICAL
+    "blower-power",
+    "screw-conveyor",
+]
+
+HYDRAULIC_MODULES = {
+    slug: HYDRAULIC_MODULES[slug]
+    for slug in DISPLAY_ORDER
+    if slug in HYDRAULIC_MODULES
+}
+
+# Sidebar grouping (includes Total Discharge Head, which is a separate route)
+SIDEBAR_MODULE_GROUPS = [
+    {
+        "title": "HYDRAULICS",
+        "items": [
+            {"slug": "total-discharge-head", "name": "Total Discharge Head", "icon": "💧", "endpoint": "total_pump_head"},
+            {"slug": "pipe-diameter",        "name": "Pipe Diameter Sizing", "icon": "📏", "endpoint": "calc_view"},
+            {"slug": "pipe-head-loss",       "name": "Pipe Head Loss",       "icon": "💦", "endpoint": "calc_view"},
+            {"slug": "flow-through-pipe",    "name": "Flow Through Pipe",    "icon": "🌊", "endpoint": "calc_view"},
+        ],
+    },
+    {
+        "title": "PUMPS",
+        "items": [
+            {"slug": "pump-power",           "name": "Pump Power Calculator", "icon": "🚀", "endpoint": "calc_view"},
+            {"slug": "pump-affinity",        "name": "Pump Affinity Laws",    "icon": "⚙️", "endpoint": "calc_view"},
+        ],
+    },
+    {
+        "title": "OPEN CHANNELS",
+        "items": [
+            {"slug": "channel-sizing",       "name": "Channel Sizing",              "icon": "🌊", "endpoint": "calc_view"},
+            {"slug": "channel-head-loss",    "name": "Channel Head Loss", "icon": "📉", "endpoint": "calc_view"},
+            {"slug": "weir",                 "name": "Rectangular Weir",            "icon": "🌀", "endpoint": "calc_view"},
+            {"slug": "bell-mouth",           "name": "Bell-Mouth Entry Loss",       "icon": "🔔", "endpoint": "calc_view"},
+        ],
+    },
+    {
+        "title": "TANKS",
+        "items": [
+            {"slug": "tank-volume",          "name": "Circular Tank Volume",   "icon": "🏗️", "endpoint": "calc_view"},
+            {"slug": "tank-diameter",        "name": "Tank Diameter Sizing",   "icon": "📐", "endpoint": "calc_view"},
+            {"slug": "liquid-height",        "name": "Liquid Height",          "icon": "💧", "endpoint": "calc_view"},
+        ],
+    },
+    {
+        "title": "MECHANICAL",
+        "items": [
+            {"slug": "blower-power",         "name": "Air Blower / Compressor", "icon": "💨", "endpoint": "calc_view"},
+            {"slug": "screw-conveyor",       "name": "Screw Conveyor",          "icon": "🌀", "endpoint": "calc_view"},
+        ],
+    },
+]
 
 
 # ---------------------------------------------------------------
@@ -626,14 +769,23 @@ def calc_view(slug):
         try:
             kwargs = {}
             for var, label, _, _, _ in cfg["inputs"]:
-                if request.form.get(var, "").strip() == "":
+                raw = request.form.get(var, "").strip()
+                if raw == "":
                     raise ValueError(f"{label} is required.")
-                kwargs[var] = safe_float(request.form.get(var))
+                kwargs[var] = safe_float(raw)
             result = cfg["fn"](**kwargs)
             _store_last(slug, cfg["name"], cfg["icon"],
                         kwargs, result, cfg["formula"])
-        except (ValueError, ZeroDivisionError) as e:
+        except ValueError as e:
             error = str(e)
+        except ZeroDivisionError:
+            error = "Division by zero — check that no denominator input is 0."
+        except TypeError as e:
+            # Usually: signature mismatch — server needs a restart
+            error = (f"Internal signature error: {e}. "
+                     "The server may need a restart after a code change.")
+        except Exception as e:  # noqa: BLE001 — last-resort safety net
+            error = f"Unexpected error: {type(e).__name__}: {e}"
 
     return render_template(
         "module_calc.html",
@@ -832,27 +984,6 @@ def history_submit(calc_id):
         abort(404)
     if row["status"] in ("pending", "approved"):
         flash("Already submitted.", "warn")
-    else:
-        auth.get_db().execute(
-            "UPDATE calculations SET status='pending' WHERE id=?", (calc_id,))
-        auth.get_db().commit()
-        for owner in [x for x in auth.list_users_public() if x["role"] == "owner"]:
-            push_notification(owner["id"], "New approval request",
-                              f"{row['module_name']} submitted by "
-                              f"{auth.current_user()['full_name']}",
-                              "info", url_for("approvals"))
-        flash("Submitted for approval.", "ok")
-    return redirect(url_for("history"))
-
-
-@app.route("/history/<int:calc_id>/submit", methods=["POST"])
-def history_submit(calc_id):
-    if (r := need_login()): return r
-    row = _get_calc(calc_id)
-    if not row or not _can_touch_calc(row):
-        abort(404)
-    if row["status"] in ("pending", "approved"):
-        flash("Already submitted.", "warn")
         return redirect(url_for("history"))
 
     # ---- Update status ----
@@ -879,6 +1010,20 @@ def history_submit(calc_id):
         )
 
     flash("Submitted for approval.", "ok")
+    return redirect(url_for("history"))
+
+
+@app.route("/history/<int:calc_id>/cancel", methods=["POST"])
+def history_cancel(calc_id):
+    if (r := need_login()): return r
+    row = _get_calc(calc_id)
+    if not row or not _can_touch_calc(row):
+        abort(404)
+    if row["status"] == "pending":
+        auth.get_db().execute(
+            "UPDATE calculations SET status='draft' WHERE id=?", (calc_id,))
+        auth.get_db().commit()
+        flash("Approval cancelled.", "ok")
     return redirect(url_for("history"))
 
 
