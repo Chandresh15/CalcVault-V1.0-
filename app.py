@@ -128,6 +128,34 @@ def safe_float(v: Any, default: float = 0.0) -> float:
 def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
+def _module_defaults(cfg: Dict[str, Any]) -> Dict[str, str]:
+    """Return module defaults as a string dict for template prefill."""
+    return {var: str(default) for var, _, _, default, _ in cfg["inputs"]}
+
+
+def _last_inputs_for_module(module_slug: str) -> Dict[str, Any]:
+    """Get the most recent saved inputs for this user + module."""
+    u = auth.current_user()
+    if not u:
+        return {}
+
+    row = auth.get_db().execute(
+        """SELECT inputs_json
+             FROM calculations
+            WHERE user_id = ? AND module_slug = ?
+            ORDER BY id DESC
+            LIMIT 1""",
+        (u["id"], module_slug),
+    ).fetchone()
+
+    if not row:
+        return {}
+
+    try:
+        return json.loads(row["inputs_json"] or "{}")
+    except (TypeError, json.JSONDecodeError):
+        return {}
+
 
 def _store_last(module_slug: str, module_name: str, module_icon: str,
                 inputs: Dict[str, Any], results: Dict[str, Any],
@@ -758,12 +786,22 @@ def calc_view(slug):
     if not cfg:
         abort(404)
 
-    values, result, error = {}, None, None
+    result, error = None, None
 
-    # Prefill defaults or POSTed values
-    for var, _, _, default, _ in cfg["inputs"]:
-        values[var] = request.form.get(var, "") if request.method == "POST" \
-                                                else str(default)
+    defaults = _module_defaults(cfg)
+
+    if request.method == "POST":
+        values = {
+            var: request.form.get(var, "")
+            for var, _, _, _, _ in cfg["inputs"]
+        }
+    else:
+        # First load: use last-used values if available, otherwise defaults
+        last_used = _last_inputs_for_module(slug)
+        values = defaults.copy()
+        for var in values:
+            if var in last_used and last_used[var] not in (None, ""):
+                values[var] = str(last_used[var])
 
     if request.method == "POST":
         try:
@@ -1603,7 +1641,7 @@ def _open_browser_soon(port: int) -> None:
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", os.environ.get("CV_PORT", "5000")))
+    port = int(os.environ.get("CV_PORT", "5000"))
     _print_banner(port)
     if "--no-browser" not in sys.argv:
         _open_browser_soon(port)
